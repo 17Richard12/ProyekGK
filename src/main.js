@@ -11,6 +11,8 @@ const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerH
 camera.rotation.order = 'YXZ';
 
 const container = document.getElementById('container');
+const uncollectedMoneyDisplay = document.getElementById('uncollectedMoneyDisplay');
+const collectedMoneyDisplay = document.getElementById('collectedMoneyDisplay');
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
@@ -28,11 +30,59 @@ function onWindowResize() {
     renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
+function updateCollectedMoneyDisplay() {
+    if (collectedMoneyDisplay) {
+        collectedMoneyDisplay.innerText = `💵 ${playerMoney}`;
+    }
+}
+
+function updateUncollectedMoneyDisplay() {
+    if (uncollectedMoneyDisplay) {
+        uncollectedMoneyDisplay.innerText = `💰 ${uncollectedMoney}`;
+    }
+}
+
+function generateMoney() {
+    uncollectedMoney += 10;
+    updateUncollectedMoneyDisplay(); // Perbarui tampilan uncollected money
+}
+
+function collectMoney() {
+    if (uncollectedMoney > 0) {
+        playerMoney += uncollectedMoney; // Pindahkan uang
+        uncollectedMoney = 0; // Reset uang yang belum terkumpul
+
+        // Perbarui kedua tampilan
+        updateCollectedMoneyDisplay();
+        updateUncollectedMoneyDisplay();
+    }
+}
+
+document.addEventListener('keydown', (event) => {
+    keyStates[event.code] = true;
+
+    if (event.code === 'KeyE' && !isWeaponSwitching) {
+        toggleWeapon();
+    }
+    
+    // HAPUS KONDISI LAMA INI (JIKA ADA):
+    // if (event.code === 'KeyF' && isLeverHighlighted && !isDoorRotating) {
+    //     rotateDoor();
+    // }
+
+    // --- TAMBAHKAN KONDISI BARU DI BAWAH INI ---
+    if (event.code === 'KeyC') {
+        collectMoney();
+    }
+});
+
 const clock = new THREE.Clock();
 const GRAVITY = 30;
 const STEPS_PER_FRAME = 2;
 
 const worldOctree = new Octree();
+let playerMoney = 0; 
+let uncollectedMoney = 0;
 
 const playerCollider = new Capsule(new THREE.Vector3(-9, 0.8, 5), new THREE.Vector3(-9, 1.2, 5), 0.8);
 
@@ -781,5 +831,9 @@ function animate() {
     renderer.render(scene, camera);
 }
 
+updateCollectedMoneyDisplay();
+updateUncollectedMoneyDisplay();
+
+setInterval(generateMoney, 1000);
 
 animate();
