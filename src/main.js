@@ -64,11 +64,6 @@ document.addEventListener('keydown', (event) => {
     if (event.code === 'KeyE' && !isWeaponSwitching) {
         toggleWeapon();
     }
-    
-    // HAPUS KONDISI LAMA INI (JIKA ADA):
-    // if (event.code === 'KeyF' && isLeverHighlighted && !isDoorRotating) {
-    //     rotateDoor();
-    // }
 
     // --- TAMBAHKAN KONDISI BARU DI BAWAH INI ---
     if (event.code === 'KeyC') {
@@ -94,8 +89,7 @@ const keyStates = {};
 let mouseTime = 0;
 let isCollidingWithDoor = false;
 
-let knife, kar98k;
-let currentWeapon = 'knife';
+let knife;
 
 const loader = new GLTFLoader();
 loader.load('/Knife/karambit.glb', (gltf) => {
@@ -120,42 +114,6 @@ loader.load('/Knife/karambit.glb', (gltf) => {
     console.error('Error loading knife:', error);
 });
 
-loader.load('/Gun/kar98k.glb', (gltf) => {
-    kar98k = gltf.scene;
-    kar98k.scale.set(0.4, 0.4, 0.4);
-    kar98k.position.set(0.5, -0.5, -1);
-    kar98k.rotation.set(0, Math.PI / 2, 0);
-
-    kar98k.userData.initialPosition = kar98k.position.clone();
-    kar98k.userData.initialRotation = kar98k.rotation.clone();
-
-    kar98k.traverse((node) => {
-        if (node.isMesh) {
-            if (node.material.map) {
-                node.material.map.encoding = THREE.sRGBEncoding;
-            }
-            node.material.needsUpdate = true;
-        }
-    });
-
-    camera.add(kar98k);
-    kar98k.visible = false; // Initially hide the gun
-}, undefined, (error) => {
-    console.error('Error loading gun:', error);
-});
-
-document.addEventListener('keydown', (event) => {
-    keyStates[event.code] = true;
-
-    if (event.code === 'KeyE' && !isWeaponSwitching) {
-        toggleWeapon();
-    }
-
-    if (event.code === 'KeyF' && isLeverHighlighted && !isDoorRotating) {
-        rotateDoor();
-    }
-});
-
 document.addEventListener('keyup', (event) => {
     keyStates[event.code] = false;
 });
@@ -177,19 +135,11 @@ document.addEventListener('pointerlockchange', () => {
 function onDocumentMouseDown(event) {
     // Memeriksa jika tombol kiri mouse yang ditekan
     if (event.button === 0) {
-        // Jika senjata saat ini adalah kar98k, panggil fungsi tembak
-        if (currentWeapon === 'kar98k') {
-            shoot();
-        } 
-        // Jika pisaunya, lakukan animasi putaran
-        else if (currentWeapon === 'knife') {
-            mouseTime = performance.now();
-            startSpin();
-        }
+        // Karena hanya ada pisau, langsung panggil animasi putaran
+        mouseTime = performance.now();
+        startSpin();
     }
 }
-
-
 
 document.body.addEventListener('mousemove', (event) => {
     if (document.pointerLockElement === document.body) {
@@ -499,106 +449,6 @@ loader.load( '/Wall/longwall.glb', function ( gltf ) {
 const raycaster = new THREE.Raycaster();
 const rayDirection = new THREE.Vector3();
 
-//function buat tembak 
-function shoot() {
-    // 1. Atur posisi awal sinar (origin) dari tengah kamera
-    const origin = new THREE.Vector3();
-    camera.getWorldPosition(origin);
-    raycaster.setFromCamera({ x: 0, y: 0 }, camera);
-
-    // 2. Lakukan "tembakan" sinar dan dapatkan objek apa saja yang berpotongan
-    // Kita buat daftar objek yang bisa ditembak. Untuk awal, kita masukkan semua children dari scene.
-    // Nanti ini bisa dioptimalkan hanya untuk objek-objek tertentu (musuh, dinding, dll.)
-    const intersects = raycaster.intersectObjects(scene.children, true);
-
-    // 3. Periksa apakah ada objek yang kena tembak
-    if (intersects.length > 0) {
-        // Ambil objek pertama yang paling dekat dengan kamera
-        const intersection = intersects[0];
-
-        // Titik lokasi peluru mengenai target
-        const impactPoint = intersection.point;
-        
-        // Di sini kita akan panggil fungsi untuk membuat jejak peluru dan bekas tembakan
-        createBulletTrail(impactPoint);
-        createImpactMark(impactPoint, intersection.face.normal);
-
-        console.log('Hit:', intersection.object.name, 'at', impactPoint);
-    } else {
-        // Jika tidak mengenai apa-apa, jejak peluru tetap dibuat tapi ke arah yang jauh
-        const missPoint = new THREE.Vector3();
-        raycaster.ray.at(100, missPoint); // 100 adalah jarak "miss"
-        createBulletTrail(missPoint);
-    }
-}
-
-function createBulletTrail(endPoint) {
-    // Titik awal jejak peluru (sedikit di depan dan di kanan kamera, seolah dari laras senjata)
-    const gunPosition = new THREE.Vector3();
-    camera.getWorldPosition(gunPosition);
-    
-    // Gunakan Vector3 untuk kalkulasi posisi yang lebih akurat
-    const startPoint = new THREE.Vector3();
-    camera.getWorldPosition(startPoint);
-
-    // Buat geometri garis dari titik awal ke titik akhir
-    const points = [startPoint, endPoint];
-    const trailGeometry = new THREE.BufferGeometry().setFromPoints(points);
-
-    // Buat material untuk garis (warna kuning terang agar terlihat jelas)
-    const trailMaterial = new THREE.LineBasicMaterial({
-        color: 0xffff00,
-        linewidth: 2, // Atur ketebalan garis
-    });
-
-    // Buat objek garis
-    const bulletTrail = new THREE.Line(trailGeometry, trailMaterial);
-    
-    // Render jejak peluru di atas objek lain dan nonaktifkan depth test agar selalu terlihat
-    bulletTrail.renderOrder = 999;
-    bulletTrail.material.depthTest = false;
-
-    scene.add(bulletTrail);
-
-    // Hapus jejak peluru setelah beberapa milidetik agar tidak memenuhi scene
-    setTimeout(() => {
-        scene.remove(bulletTrail);
-    }, 150); // 150 milidetik
-}
-
-function createImpactMark(point, normal) {
-    // Membuat geometri sederhana untuk bekas tembakan (misalnya, lingkaran)
-    const impactGeometry = new THREE.CircleGeometry(0.1, 16); // radius 0.1, 16 segmen
-
-    // Material bekas tembakan (warna hitam atau tekstur lubang peluru)
-    const impactMaterial = new THREE.MeshBasicMaterial({
-        color: 0x000000,
-        side: THREE.DoubleSide
-    });
-
-    const impactMark = new THREE.Mesh(impactGeometry, impactMaterial);
-    
-    // Posisikan bekas tembakan di titik tumbukan
-    impactMark.position.copy(point);
-    
-    // Pindahkan sedikit ke arah luar permukaan untuk menghindari "z-fighting" (flickering)
-    impactMark.position.addScaledVector(normal, 0.01);
-
-    // Arahkan bekas tembakan agar menghadap kamera
-    impactMark.lookAt(camera.position);
-
-    // Render di atas objek lain
-    impactMark.renderOrder = 999;
-    impactMark.material.depthTest = false;
-
-    scene.add(impactMark);
-
-    // Hapus bekas tembakan setelah beberapa detik
-    setTimeout(() => {
-        scene.remove(impactMark);
-    }, 2000); // 2 detik
-}
-
 function checkCollisionWithDoorRaycasting() {
     const playerPosition = new THREE.Vector3();
     playerCollider.getCenter(playerPosition);
@@ -748,21 +598,16 @@ function handleSpin() {
         if (elapsedTime < spinDuration) {
             const spinAngle = (elapsedTime / spinDuration) * Math.PI * 2;
             const twistAngle = Math.sin((elapsedTime / spinDuration) * Math.PI * 4) * 0.2;
-            const spinKar = (elapsedTime / spinDuration) * Math.PI * 2;
-            if (currentWeapon === 'knife') {
-                knife.rotation.y = spinAngle;
-                knife.rotation.z = twistAngle;
-            } else {
-                kar98k.rotation.x = spinKar;
-            }
+            
+            // Langsung atur rotasi pisau
+            knife.rotation.y = spinAngle;
+            knife.rotation.z = twistAngle;
+
         } else {
             isSpinning = false;
-            if (currentWeapon === 'knife') {
-                knife.rotation.copy(knife.userData.initialRotation);
-            } else {
-                kar98k.rotation.copy(kar98k.userData.initialRotation);
-            }
-            isWeaponSwitching = false; // Allow weapon switching again
+            // Langsung kembalikan rotasi pisau
+            knife.rotation.copy(knife.userData.initialRotation);
+            isWeaponSwitching = false;
         }
     }
 }
@@ -773,27 +618,6 @@ function preventKnifeClipping() {
     }
 }
 
-function preventGunClipping() {
-    if (kar98k.position.y <= -1.5) {
-        kar98k.position.copy(kar98k.userData.initialPosition);
-    }
-}
-
-function toggleWeapon() {
-    if (knife && kar98k && !isWeaponSwitching) {
-        isWeaponSwitching = true;
-        startSpin(); // Start the spin animation
-        if (currentWeapon === 'knife') {
-            knife.visible = false;
-            kar98k.visible = true;
-            currentWeapon = 'kar98k';
-        } else {
-            knife.visible = true;
-            kar98k.visible = false;
-            currentWeapon = 'knife';
-        }
-    }
-}
 function animate() {
     requestAnimationFrame(animate);
 
@@ -807,7 +631,6 @@ function animate() {
 
     handleSpin();
     preventKnifeClipping();
-    preventGunClipping();
     checkLeverProximityAndOrientation();
 
 
