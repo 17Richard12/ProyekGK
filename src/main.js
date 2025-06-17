@@ -43,18 +43,37 @@ const keyStates = {};
 // Tycoon & Uang
 let playerMoney = 0;
 let uncollectedMoney = 0;
+// --- TAMBAHKAN VARIABEL BARU DI BAWAH INI ---
+let currentIncomeRate = 10; // Pendapatan awal per detik
+// Daftar pendapatan untuk setiap level (Level 0, Level 1, Level 2, dst.)
+const incomeRatesByLevel = [10, 25, 75, 200]; 
 const uncollectedMoneyDisplay = document.getElementById('uncollectedMoneyDisplay');
 const collectedMoneyDisplay = document.getElementById('collectedMoneyDisplay');
+const incomeRateDisplay = document.getElementById('incomeRateDisplay');
 const leverMessage = document.getElementById('leverMessage');
+
+function updateIncomeRateDisplay() {
+    if (incomeRateDisplay) {
+        incomeRateDisplay.innerText = `+${currentIncomeRate} / detik`;
+    }
+}
 
 // Interaksi & Aset
 let knife;
 let lever;
 let isLeverHighlighted = false;
 let buildLever;
-let building;
 let isBuildLeverHighlighted = false;
-const buildingCost = 100;
+
+// Variabel baru untuk sistem tingkatan
+let buildingLevel = 0; // Mulai dari level 0 (belum ada bangunan)
+const buildingTierCosts = [100, 500, 1500]; // Biaya untuk Level 1, 2, 3
+const buildingTierModels = [
+    '/Building/building1.glb', // Model untuk Level 1
+    '/Building/building2.glb', // Model untuk Level 2
+    '/Building/house_valo.glb' // Model untuk Level 3
+];
+let buildings = []; // Array untuk menyimpan objek bangunan yang sudah dibuat
 let mouseTime = 0;
 let isSpinning = false;
 const spinDuration = 500;
@@ -106,16 +125,6 @@ loader.load('/Lever/lever.glb', function (gltf) {
     // Posisikan di tempat lain, misalnya di sebelah kanan
     buildLever.position.set(15, 0.7, -7); 
     scene.add(buildLever);
-});
-
-// Bangunan yang akan dibangun
-loader.load('/Building/building1.glb', function (gltf) {
-    building = gltf.scene;
-    building.position.set(10, 0, 5);
-    building.scale.set(2, 2, 2);
-    // Sembunyikan bangunan pada awalnya
-    building.visible = false; 
-    scene.add(building);
 });
 
 // --- Dinding Pembatas ---
@@ -242,8 +251,9 @@ function updateUncollectedMoneyDisplay() {
     if (uncollectedMoneyDisplay) uncollectedMoneyDisplay.innerText = `💰 ${uncollectedMoney}`;
 }
 
+// --- Versi Baru ---
 function generateMoney() {
-    uncollectedMoney += 10;
+    uncollectedMoney += currentIncomeRate; // Gunakan variabel dinamis
     updateUncollectedMoneyDisplay();
 }
 
@@ -292,23 +302,32 @@ function highlightLever(highlight) {
 }
 
 function checkBuildLeverProximity() {
-    if (!buildLever || (building && building.visible)) return; // Jangan cek jika tuas belum ada atau bangunan sudah jadi
+    // Jangan jalankan jika tuas belum dimuat
+    if (!buildLever) return;
+
+    // Cek jika sudah mencapai level maksimal
+    if (buildingLevel >= buildingTierCosts.length) {
+        leverMessage.innerText = 'Level Maksimal';
+        highlightBuildLever(true, '#ffff00'); // Highlight kuning untuk info
+        leverMessage.style.display = 'block';
+        return; // Hentikan fungsi di sini
+    }
 
     const leverPosition = new THREE.Vector3();
     buildLever.getWorldPosition(leverPosition);
     const playerPosition = new THREE.Vector3();
     playerCollider.getCenter(playerPosition);
     const distance = leverPosition.distanceTo(playerPosition);
+    const currentCost = buildingTierCosts[buildingLevel]; // Ambil biaya untuk level selanjutnya
 
     if (distance < 3) {
         if (!isBuildLeverHighlighted) {
-            // Cek apakah uang cukup
-            if (playerMoney >= buildingCost) {
-                leverMessage.innerText = `Tekan F untuk membangun (Biaya: ${buildingCost})`;
-                highlightBuildLever(true, '#00ff00'); // Highlight hijau jika bisa
+            if (playerMoney >= currentCost) {
+                leverMessage.innerText = `Upgrade ke Lv. ${buildingLevel + 1} (Biaya: ${currentCost})`;
+                highlightBuildLever(true, '#00ff00'); // Hijau, bisa dibeli
             } else {
-                leverMessage.innerText = `Uang tidak cukup (Butuh: ${buildingCost})`;
-                highlightBuildLever(true, '#ff0000'); // Highlight merah jika tidak bisa
+                leverMessage.innerText = `Uang tidak cukup (Butuh: ${currentCost})`;
+                highlightBuildLever(true, '#ff0000'); // Merah, tidak cukup
             }
             leverMessage.style.display = 'block';
             isBuildLeverHighlighted = true;
@@ -353,22 +372,42 @@ function animateLeverPull() {
 }
 
 function buildBuilding() {
-    // Cek lagi untuk memastikan bangunan belum ada dan uang cukup
-    if (building && !building.visible && playerMoney >= buildingCost) {
-        // Kurangi uang pemain
-        playerMoney -= buildingCost;
+    // Cek jika belum level max dan uang cukup
+    const currentCost = buildingTierCosts[buildingLevel];
+    if (buildingLevel < buildingTierCosts.length && playerMoney >= currentCost) {
+        
+        // 1. Kurangi uang pemain
+        playerMoney -= currentCost;
         updateCollectedMoneyDisplay();
 
-        // Tampilkan bangunan
-        building.visible = true;
-        // Tambahkan ke Octree agar memiliki kolisi
-        worldOctree.fromGraphNode(building);
+        // 2. Jika ada bangunan dari level sebelumnya, sembunyikan
+        if (buildingLevel > 0 && buildings[buildingLevel - 1]) {
+            buildings[buildingLevel - 1].visible = false;
+        }
 
-        // Sembunyikan tuas pembangunan setelah digunakan
-        buildLever.visible = false;
-        highlightBuildLever(false);
-        leverMessage.style.display = 'none';
-        isBuildLeverHighlighted = false; // Nonaktifkan highlight selamanya
+        // 3. Muat model bangunan untuk level yang baru
+        const modelPath = buildingTierModels[buildingLevel];
+        loader.load(modelPath, (gltf) => {
+            const newBuilding = gltf.scene;
+            newBuilding.position.set(-5, 0, 5); // Atur posisi sesuai keinginan
+            newBuilding.scale.set(2, 2, 2);
+            
+            scene.add(newBuilding);
+            worldOctree.fromGraphNode(newBuilding); // Tambahkan ke kolisi
+            
+            // Simpan bangunan baru ke dalam array
+            buildings[buildingLevel] = newBuilding;
+        });
+
+        // 4. Naikkan level bangunan
+        buildingLevel++;
+        currentIncomeRate = incomeRatesByLevel[buildingLevel] || incomeRatesByLevel[incomeRatesByLevel.length - 1];
+        updateIncomeRateDisplay(); 
+
+        // 5. Perbarui tampilan pesan tuas secara langsung
+        // Ini akan membuat pesan langsung berubah ke biaya level berikutnya atau "Level Maksimal"
+        isBuildLeverHighlighted = false; // Paksa refresh pada frame berikutnya
+        checkBuildLeverProximity();
     }
 }
 
@@ -471,6 +510,7 @@ function animate() {
 // Inisialisasi Tampilan Uang & Generator
 updateCollectedMoneyDisplay();
 updateUncollectedMoneyDisplay();
+updateIncomeRateDisplay(); 
 setInterval(generateMoney, 1000);
 
 // Mulai Loop Animasi
