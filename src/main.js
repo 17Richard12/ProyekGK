@@ -51,6 +51,10 @@ const leverMessage = document.getElementById('leverMessage');
 let knife;
 let lever;
 let isLeverHighlighted = false;
+let buildLever;
+let building;
+let isBuildLeverHighlighted = false;
+const buildingCost = 100;
 let mouseTime = 0;
 let isSpinning = false;
 const spinDuration = 500;
@@ -91,8 +95,27 @@ loader.load('/Lever/lever.glb', function (gltf) {
     lever = gltf.scene;
     lever.scale.set(1, 1, 1);
     lever.rotation.set(0, Math.PI / 2, 0);
-    lever.position.set(15, 0.7, -5);
+    lever.position.set(15, 0.7, -3);
     scene.add(lever);
+});
+
+loader.load('/Lever/lever.glb', function (gltf) {
+    buildLever = gltf.scene;
+    buildLever.scale.set(1, 1, 1);
+    buildLever.rotation.set(0, Math.PI / 2, 0);
+    // Posisikan di tempat lain, misalnya di sebelah kanan
+    buildLever.position.set(15, 0.7, -7); 
+    scene.add(buildLever);
+});
+
+// Bangunan yang akan dibangun
+loader.load('/Building/building1.glb', function (gltf) {
+    building = gltf.scene;
+    building.position.set(10, 0, 5);
+    building.scale.set(2, 2, 2);
+    // Sembunyikan bangunan pada awalnya
+    building.visible = false; 
+    scene.add(building);
 });
 
 // --- Dinding Pembatas ---
@@ -226,6 +249,7 @@ function generateMoney() {
 
 function collectMoney() {
     if (uncollectedMoney > 0) {
+        animateLeverPull();
         playerMoney += uncollectedMoney;
         uncollectedMoney = 0;
         updateCollectedMoneyDisplay();
@@ -267,6 +291,87 @@ function highlightLever(highlight) {
     });
 }
 
+function checkBuildLeverProximity() {
+    if (!buildLever || (building && building.visible)) return; // Jangan cek jika tuas belum ada atau bangunan sudah jadi
+
+    const leverPosition = new THREE.Vector3();
+    buildLever.getWorldPosition(leverPosition);
+    const playerPosition = new THREE.Vector3();
+    playerCollider.getCenter(playerPosition);
+    const distance = leverPosition.distanceTo(playerPosition);
+
+    if (distance < 3) {
+        if (!isBuildLeverHighlighted) {
+            // Cek apakah uang cukup
+            if (playerMoney >= buildingCost) {
+                leverMessage.innerText = `Tekan F untuk membangun (Biaya: ${buildingCost})`;
+                highlightBuildLever(true, '#00ff00'); // Highlight hijau jika bisa
+            } else {
+                leverMessage.innerText = `Uang tidak cukup (Butuh: ${buildingCost})`;
+                highlightBuildLever(true, '#ff0000'); // Highlight merah jika tidak bisa
+            }
+            leverMessage.style.display = 'block';
+            isBuildLeverHighlighted = true;
+        }
+    } else {
+        if (isBuildLeverHighlighted) {
+            highlightBuildLever(false);
+            leverMessage.style.display = 'none';
+            isBuildLeverHighlighted = false;
+        }
+    }
+}
+
+function highlightBuildLever(highlight, color = 0x000000) {
+    if (!buildLever) return;
+    buildLever.traverse((node) => {
+        if (node.isMesh) {
+            node.material.emissive = new THREE.Color(highlight ? color : 0x000000);
+            node.material.emissiveIntensity = highlight ? 0.5 : 0;
+        }
+    });
+}
+
+function animateLeverPull() {
+    // Pastikan tuas ada dan tidak sedang dianimasikan untuk menghindari tumpukan animasi
+    if (!lever || TWEEN.getAll().length > 0) return;
+
+    // Simpan rotasi awal
+    const startRotation = { x: lever.rotation.x };
+    // Tentukan rotasi akhir (tuas ditarik 45 derajat)
+    const endRotation = { x: lever.rotation.x + Math.PI / 4 };
+
+    new TWEEN.Tween(startRotation)
+        .to(endRotation, 200) // Animasi selama 200ms
+        .easing(TWEEN.Easing.Quadratic.InOut) // Jenis gerakan animasi
+        .onUpdate(() => {
+            lever.rotation.x = startRotation.x;
+        })
+        .yoyo(true) // Membuat animasi kembali ke posisi awal
+        .repeat(1)  // Mengulang sekali (pull -> release)
+        .start();
+}
+
+function buildBuilding() {
+    // Cek lagi untuk memastikan bangunan belum ada dan uang cukup
+    if (building && !building.visible && playerMoney >= buildingCost) {
+        // Kurangi uang pemain
+        playerMoney -= buildingCost;
+        updateCollectedMoneyDisplay();
+
+        // Tampilkan bangunan
+        building.visible = true;
+        // Tambahkan ke Octree agar memiliki kolisi
+        worldOctree.fromGraphNode(building);
+
+        // Sembunyikan tuas pembangunan setelah digunakan
+        buildLever.visible = false;
+        highlightBuildLever(false);
+        leverMessage.style.display = 'none';
+        isBuildLeverHighlighted = false; // Nonaktifkan highlight selamanya
+    }
+}
+
 function startSpin() {
     if (!isSpinning) {
         isSpinning = true;
@@ -302,8 +407,14 @@ window.addEventListener('resize', onWindowResize);
 
 document.addEventListener('keydown', (event) => {
     keyStates[event.code] = true;
-    if (event.code === 'KeyF' && isLeverHighlighted) {
-        collectMoney();
+    if (event.code === 'KeyF') {
+        if (isLeverHighlighted) {
+            // Jika tuas pengumpul uang yang aktif
+            collectMoney();
+        } else if (isBuildLeverHighlighted) {
+            // Jika tuas pembangunan yang aktif
+            buildBuilding();
+        }
     }
 });
 
@@ -351,6 +462,7 @@ function animate() {
     
     handleSpin();
     checkLeverProximity();
+    checkBuildLeverProximity();
     
     TWEEN.update();
     renderer.render(scene, camera);
