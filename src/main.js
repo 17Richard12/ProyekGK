@@ -388,12 +388,6 @@ container.addEventListener('click', () => {
     document.body.requestPointerLock();
 });
 
-document.addEventListener('pointerlockchange', () => {
-    if (document.pointerLockElement === document.body) {
-        document.addEventListener('mousedown', (e) => { if (e.button === 0) startSpin(); });
-    }
-});
-
 document.body.addEventListener('mousemove', (event) => {
     if (document.pointerLockElement === document.body) {
         camera.rotation.y -= event.movementX / 1000;
