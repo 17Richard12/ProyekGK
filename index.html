@@ -94,6 +94,30 @@
         display: none; /* Hidden by default */
         z-index: 99;
     }
+
+    /* Message for "Can't afford this" */
+    #affordMessage {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: rgba(255, 0, 0, 0.7); /* Red transparent */
+        color: white;
+        padding: 15px 30px;
+        border-radius: 10px;
+        font-size: 28px;
+        font-weight: bold;
+        text-align: center;
+        display: none; /* Hidden by default */
+        z-index: 200; /* On top of everything */
+        animation: fadeOut 3s forwards; /* Animation to fade out */
+    }
+
+    @keyframes fadeOut {
+        0% { opacity: 1; }
+        80% { opacity: 1; }
+        100% { opacity: 0; }
+    }
 </style>
 <body>
     <div id="container"></div>
@@ -105,6 +129,7 @@
     <button id="collectButton">Collect Money (C)</button>
 
     <div id="leverMessage">Press F to pull lever</div>
+    <div id="affordMessage">You can't afford this!</div>
 
     <div id="labels"></div>
 

@@ -15,7 +15,8 @@ const container = document.getElementById('container');
 const uncollectedMoneyDisplay = document.getElementById('uncollectedMoneyDisplay');
 const collectedMoneyDisplay = document.getElementById('collectedMoneyDisplay');
 const collectButton = document.getElementById('collectButton');
-const leverMessage = document.getElementById('leverMessage'); // Get the lever message element
+const leverMessage = document.getElementById('leverMessage');
+const affordMessage = document.getElementById('affordMessage'); // Get the afford message element
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
@@ -45,8 +46,7 @@ function onWindowResize() {
 // TYCOON MONEY SYSTEM ===============================================
 let playerMoney = 0;
 let uncollectedMoney = 0;
-// purchasedRevenueSources tidak lagi digunakan untuk income utama
-// const purchasedRevenueSources = {};
+const purchasedRevenueSources = {}; // Ini masih digunakan untuk menghitung pendapatan hewan
 
 function updateCollectedMoneyDisplay() {
     if (collectedMoneyDisplay) {
@@ -56,7 +56,8 @@ function updateCollectedMoneyDisplay() {
 
 function updateUncollectedMoneyDisplay() {
     if (uncollectedMoneyDisplay) {
-        collectedMoneyDisplay.innerText = `💵 ${playerMoney}`; // Tampilkan playerMoney di sini juga agar terlihat
+        // Tampilkan playerMoney di collectedMoneyDisplay, dan uncollected di uncollectedMoneyDisplay
+        collectedMoneyDisplay.innerText = `💵 ${playerMoney}`; 
         uncollectedMoneyDisplay.innerText = `💰 ${Math.floor(uncollectedMoney)}`;
     }
 }
@@ -66,7 +67,7 @@ const LEVER_INCOME_PER_PULL = 50; // Uang yang didapat setiap kali tuas ditarik
 let isLeverPulling = false; // Mencegah tuas ditarik berulang kali saat animasi
 
 function pullLever() {
-    if (isLeverPulling) return; // Don't pull if already pulling
+    if (isLeverPulling) return;
 
     isLeverPulling = true;
     uncollectedMoney += LEVER_INCOME_PER_PULL;
@@ -74,23 +75,29 @@ function pullLever() {
     console.log(`Lever pulled! Uncollected Money: ${uncollectedMoney}`);
 
     // Animate the lever pull
-    const initialRotation = lever.rotation.clone();
-    const targetRotation = lever.rotation.clone();
-    targetRotation.x += Math.PI / 4; // Rotate the lever forward (adjust value if needed)
+    // Pastikan `lever` sudah dimuat sebelum dianimasikan
+    if (lever) {
+        const initialRotation = lever.rotation.clone();
+        const targetRotation = lever.rotation.clone();
+        targetRotation.x += Math.PI / 4; // Rotate the lever forward (adjust value if needed)
 
-    new TWEEN.Tween(lever.rotation)
-        .to({ x: targetRotation.x }, 200) // Pull forward
-        .easing(TWEEN.Easing.Quadratic.Out)
-        .onComplete(() => {
-            new TWEEN.Tween(lever.rotation)
-                .to({ x: initialRotation.x }, 200) // Return to original position
-                .easing(TWEEN.Easing.Quadratic.In)
-                .onComplete(() => {
-                    isLeverPulling = false;
-                })
-                .start();
-        })
-        .start();
+        new TWEEN.Tween(lever.rotation)
+            .to({ x: targetRotation.x }, 200) // Pull forward
+            .easing(TWEEN.Easing.Quadratic.Out)
+            .onComplete(() => {
+                new TWEEN.Tween(lever.rotation)
+                    .to({ x: initialRotation.x }, 200) // Return to original position
+                    .easing(TWEEN.Easing.Quadratic.In)
+                    .onComplete(() => {
+                        isLeverPulling = false;
+                    })
+                    .start();
+            })
+            .start();
+    } else {
+        isLeverPulling = false; // Reset if lever not loaded
+        console.warn("Lever model not loaded yet, cannot pull.");
+    }
 }
 
 
@@ -101,12 +108,29 @@ function collectMoney() {
         updateCollectedMoneyDisplay();
         updateUncollectedMoneyDisplay();
         console.log(`Collected! Player Money: ${playerMoney}`);
-        updateBuildZoneButtons();
+        updateBuildZoneButtons(); // Update buttons after collecting money
     }
 }
 
 if (collectButton) {
     collectButton.addEventListener('click', collectMoney);
+}
+
+// UI Message Function
+let affordMessageTimeout;
+function showAffordMessage() {
+    if (affordMessage) {
+        // Reset animation by re-adding class
+        affordMessage.classList.remove('fadeOut');
+        void affordMessage.offsetWidth; // Trigger reflow to restart animation
+        affordMessage.classList.add('fadeOut');
+
+        affordMessage.style.display = 'block';
+        clearTimeout(affordMessageTimeout);
+        affordMessageTimeout = setTimeout(() => {
+            affordMessage.style.display = 'none';
+        }, 3000); // Hide after 3 seconds (matches animation duration)
+    }
 }
 
 
@@ -117,13 +141,13 @@ const STEPS_PER_FRAME = 2;
 
 const worldOctree = new Octree();
 
-// --- Spawn Point ---
+// --- Spawn Point Coordinates ---
 const SPAWN_POINT_X = 0;
 const SPAWN_POINT_Z = 0;
-const SPAWN_POINT_Y = 0.8; // Player's feet position
+const SPAWN_POINT_Y_CAPSULE_BOTTOM = 0.8; // Player's feet position
 const playerCollider = new Capsule(
-    new THREE.Vector3(SPAWN_POINT_X, SPAWN_POINT_Y, SPAWN_POINT_Z),
-    new THREE.Vector3(SPAWN_POINT_X, SPAWN_POINT_Y + 0.4, SPAWN_POINT_Z), // Top of capsule
+    new THREE.Vector3(SPAWN_POINT_X, SPAWN_POINT_Y_CAPSULE_BOTTOM, SPAWN_POINT_Z),
+    new THREE.Vector3(SPAWN_POINT_X, SPAWN_POINT_Y_CAPSULE_BOTTOM + 0.4, SPAWN_POINT_Z), // Top of capsule
     0.8 // Radius
 );
 
@@ -148,7 +172,6 @@ document.addEventListener('keydown', (event) => {
         collectMoney();
     }
 
-    // Interaksi dengan lever
     if (event.code === 'KeyF' && isLeverHighlighted) {
         pullLever();
     }
@@ -249,8 +272,8 @@ function controls(deltaTime) {
 function teleportPlayerIfOob() {
     if (camera.position.y <= -25) {
         // Reset to spawn point
-        playerCollider.start.set(SPAWN_POINT_X, SPAWN_POINT_Y, SPAWN_POINT_Z);
-        playerCollider.end.set(SPAWN_POINT_X, SPAWN_POINT_Y + 0.4, SPAWN_POINT_Z);
+        playerCollider.start.set(SPAWN_POINT_X, SPAWN_POINT_Y_CAPSULE_BOTTOM, SPAWN_POINT_Z);
+        playerCollider.end.set(SPAWN_POINT_X, SPAWN_POINT_Y_CAPSULE_BOTTOM + 0.4, SPAWN_POINT_Z);
         playerCollider.radius = 0.8;
         camera.position.copy(playerCollider.end);
         camera.rotation.set(0, 0, 0);
@@ -261,7 +284,7 @@ function teleportPlayerIfOob() {
 // LEVER INTERACTION LOGIC
 // ====================================================================
 function checkLeverInteraction() {
-    if (!lever) return; // Ensure lever is loaded
+    if (!lever) return;
 
     const playerWorldPos = new THREE.Vector3();
     playerCollider.getCenter(playerWorldPos);
@@ -271,10 +294,9 @@ function checkLeverInteraction() {
 
     const distance = playerWorldPos.distanceTo(leverWorldPos);
 
-    // Set raycaster from camera to check if player is looking at the lever
-    raycaster.setFromCamera(new THREE.Vector2(0,0), camera); // Ray from center of screen
+    raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
 
-    const intersects = raycaster.intersectObject(lever, true); // Check intersection with lever
+    const intersects = raycaster.intersectObject(lever, true);
 
     if (distance < interactDistance && intersects.length > 0) {
         if (!isLeverHighlighted) {
@@ -311,8 +333,8 @@ const animalMixers = [];
 function createTexturedPlane(width, depth, texturePath, repeatX, repeatY, position, rotationY = 0) {
     const geometry = new THREE.PlaneGeometry(width, depth);
     const texture = textureLoader.load(texturePath,
-        () => {}, // On load
-        undefined, // On progress
+        () => {},
+        undefined,
         (error) => { console.error(`Error loading texture ${texturePath}:`, error); }
     );
     texture.wrapS = THREE.RepeatWrapping;
@@ -353,7 +375,6 @@ function loadAndPlaceModel(path, scale, position, rotationY = 0) {
     });
 }
 
-// Helper to create wooden fences around a given central point for a cage
 async function createWoodenFenceAroundArea(centerX, centerZ, cageWidth, cageDepth, woodFenceScale) {
     const WOOD_FENCE_MODEL_LENGTH = 10;
     const halfCageWidth = cageWidth / 2;
@@ -367,18 +388,22 @@ async function createWoodenFenceAroundArea(centerX, centerZ, cageWidth, cageDept
     const numSegmentsX = Math.ceil(cageWidth / WOOD_FENCE_MODEL_LENGTH);
     const numSegmentsZ = Math.ceil(cageDepth / WOOD_FENCE_MODEL_LENGTH);
 
+    // North side (along Z positive)
     for (let i = 0; i < numSegmentsX; i++) {
         const xPos = centerX - halfCageWidth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
         await placeFenceSegment(xPos, centerZ + halfCageDepth + fenceOffset, 0);
     }
+    // South side (along Z negative)
     for (let i = 0; i < numSegmentsX; i++) {
         const xPos = centerX - halfCageWidth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
         await placeFenceSegment(xPos, centerZ - halfCageDepth - fenceOffset, 0);
     }
+    // East side (along X positive)
     for (let i = 0; i < numSegmentsZ; i++) {
         const zPos = centerZ - halfCageDepth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
         await placeFenceSegment(centerX + halfCageWidth + fenceOffset, zPos, Math.PI / 2);
     }
+    // West side (along X negative)
     for (let i = 0; i < numSegmentsZ; i++) {
         const zPos = centerZ - halfCageDepth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
         await placeFenceSegment(centerX - halfCageWidth - fenceOffset, zPos, -Math.PI / 2);
@@ -392,20 +417,20 @@ const BUILD_ZONES = [
     {
         id: 'zone1',
         position: new THREE.Vector3(-30, 0, -10),
-        status: 'empty',
-        currentPriceMultiplier: 0,
-        button: null,
+        status: 'empty', // 'empty', 'cage_purchased', 'animal_purchased'
+        currentPriceMultiplier: 0, // 2^0 = 1 (base price), 2^1 = 2 (double price), etc.
+        button: null, // CSS2DObject for the button
         cageData: {
-            name: 'Buffalo Cage',
+            name: 'Buffalo Cage', // Used for display and income key
             baseCost: 200,
             animalPath: '/Animal/african_buffalo.glb',
             mainCagePath: '/Building/jail_cage.glb',
             animalScale: new THREE.Vector3(0.5, 0.5, 0.5),
-            mainCageScale: new THREE.Vector3(1.5, 1.5, 1.5),
+            mainCageScale: new THREE.Vector3(1.5, 1.5, 1.5), // This implies a 15x15 unit cage area (1.5 * 10)
             floorType: 'grass',
             woodFenceScale: new THREE.Vector3(0.5, 0.5, 0.5),
-            baseIncome: 10,
-            maxAnimals: 3
+            baseIncome: 10, // Base income per animal
+            maxAnimals: 3 // Max animals for this cage
         }
     },
     {
@@ -420,11 +445,11 @@ const BUILD_ZONES = [
             animalPath: '/Animal/elephant.glb',
             mainCagePath: '/Building/jail_cage.glb',
             animalScale: new THREE.Vector3(0.08, 0.08, 0.08),
-            mainCageScale: new THREE.Vector3(2.5, 2.5, 2.5),
+            mainCageScale: new THREE.Vector3(2.5, 2.5, 2.5), // This implies a 25x25 unit cage area (2.5 * 10)
             floorType: 'sand',
             woodFenceScale: new THREE.Vector3(0.5, 0.5, 0.5),
             baseIncome: 15,
-            maxAnimals: 2
+            maxAnimals: 2 // Elephants might take more space
         }
     },
     {
@@ -488,6 +513,7 @@ const BUILD_ZONES = [
 
 const WOOD_FENCE_UNIT_SCALE_MULTIPLIER = 10;
 
+// Initialize build zone buttons
 function initializeBuildZones() {
     BUILD_ZONES.forEach(zone => {
         const buttonDiv = document.createElement('div');
@@ -503,6 +529,7 @@ function initializeBuildZones() {
             handleBuildZoneClick(zone.id);
         });
         
+        // Atur harga awal untuk pembelian pertama
         zone.currentCost = zone.cageData.baseCost; 
     });
 }
@@ -520,12 +547,11 @@ function updateBuildZoneButtons() {
             isDisabled = playerMoney < costToDisplay;
             zone.currentCost = costToDisplay;
         } else { // cage_purchased or animal_purchased (for buying animals)
-            // Get purchased count for this specific animal type
             const animalName = zone.cageData.name.replace(' Cage', '');
             const animalCount = (purchasedRevenueSources[animalName] ? purchasedRevenueSources[animalName].count : 0);
 
             if (animalCount < zone.cageData.maxAnimals) {
-                costToDisplay = zone.cageData.baseCost * (2 ** animalCount); // Harga hewan juga naik
+                costToDisplay = zone.cageData.baseCost * (2 ** animalCount);
                 buttonText = `Add ${animalName} (💵${costToDisplay})`;
                 isDisabled = playerMoney < costToDisplay;
                 zone.currentCost = costToDisplay;
@@ -557,7 +583,8 @@ async function handleBuildZoneClick(zoneId) {
     const cost = zone.currentCost;
 
     if (playerMoney < cost) {
-        console.warn(`Not enough money for ${zone.status === 'empty' ? 'cage' : 'animal'}: ${zone.cageData.name}`);
+        showAffordMessage(); // Tampilkan pesan tidak cukup uang
+        console.warn(`You can't afford this! Need 💵${cost - playerMoney} more.`);
         return;
     }
 
@@ -586,6 +613,7 @@ async function handleBuildZoneClick(zoneId) {
             new THREE.Vector3(zone.position.x, -0.01, zone.position.z)
         );
         zone.status = 'cage_purchased';
+        zone.currentPriceMultiplier++; // Increment multiplier for next purchase (animal)
         console.log(`${zone.cageData.name} purchased and placed!`);
 
     } else if (zone.status === 'cage_purchased' || zone.status === 'animal_purchased') {
@@ -594,7 +622,7 @@ async function handleBuildZoneClick(zoneId) {
         await loadAndPlaceModel(
             zone.cageData.animalPath,
             zone.cageData.animalScale,
-            zone.position
+            zone.position // Place animal at cage center
         );
         
         // Add animal to revenue sources
@@ -605,6 +633,8 @@ async function handleBuildZoneClick(zoneId) {
             };
         }
         purchasedRevenueSources[animalName].count++;
+        // Update the price multiplier for the next animal purchase in this zone
+        zone.currentPriceMultiplier++; // Increment multiplier for next animal (if any)
 
         if (purchasedRevenueSources[animalName].count >= zone.cageData.maxAnimals) {
             zone.status = 'animal_purchased'; // All animals for this cage are purchased
@@ -624,73 +654,109 @@ const ZOO_BOUNDS_X = 40;
 const ZOO_BOUNDS_Z = 40;
 
 // --- SPAWN POINT AREA ---
-const SPAWN_AREA_SIZE = 15; // Ukuran area ubin spawn
+const SPAWN_AREA_WIDTH = 20; // Lebar area ubin spawn
+const SPAWN_AREA_DEPTH = 20; // Kedalaman area ubin spawn
+const SPAWN_FLOOR_Y = -0.01; // Sedikit di bawah objek agar tidak z-fighting
+
+// Lantai ubin untuk spawn point
 createTexturedPlane(
-    SPAWN_AREA_SIZE, SPAWN_AREA_SIZE,
-    '/Floor/tile.jpg', // Lantai ubin untuk spawn
-    SPAWN_AREA_SIZE / 2, SPAWN_AREA_SIZE / 2,
-    new THREE.Vector3(SPAWN_POINT_X, -0.01, SPAWN_POINT_Z)
+    SPAWN_AREA_WIDTH, SPAWN_AREA_DEPTH,
+    '/Floor/tile.jpg',
+    SPAWN_AREA_WIDTH / 5, SPAWN_AREA_DEPTH / 5,
+    new THREE.Vector3(SPAWN_POINT_X, SPAWN_FLOOR_Y, SPAWN_POINT_Z)
 );
 
 // Load Table and Lever at Spawn Point
+const TABLE_POS_X = SPAWN_POINT_X;
+const TABLE_POS_Z = SPAWN_POINT_Z;
+const TABLE_SCALE = new THREE.Vector3(0.02, 0.02, 0.02);
+const LEVER_POS_Y_ON_TABLE = 0.7; // Posisi Y tuas relatif terhadap lantai
+
 loader.load('/Lever/table.glb', function (gltf) {
     table = gltf.scene;
-    table.scale.set(0.02, 0.02, 0.02); // Adjust scale as needed
+    table.scale.copy(TABLE_SCALE);
     table.rotation.set(0, Math.PI / 2, 0);
-    table.position.set(SPAWN_POINT_X + 2, 0, SPAWN_POINT_Z); // Position next to spawn
+    table.position.set(TABLE_POS_X, 0, TABLE_POS_Z); // Meja di tengah area spawn
     scene.add(table);
     worldOctree.fromGraphNode(table);
 }, undefined, (error) => { console.error('Error loading Table model:', error); });
 
 loader.load('/Lever/lever.glb', function (gltf) {
     lever = gltf.scene;
-    lever.scale.set(1, 1, 1); // Adjust scale as needed
+    lever.scale.set(1, 1, 1); // Skala tuas
     lever.rotation.set(0, Math.PI / 2, 0);
-    lever.position.set(SPAWN_POINT_X + 2, 0.7, SPAWN_POINT_Z); // Position on top of the table
+    lever.position.set(TABLE_POS_X, LEVER_POS_Y_ON_TABLE, TABLE_POS_Z); // Tuas di atas meja
     scene.add(lever);
     worldOctree.fromGraphNode(lever);
 }, undefined, (error) => { console.error('Error loading Lever model:', error); });
 
 
-// --- ZOO GROUND AND PATHS (Loaded at startup) ---
-// Note: Adjusted positions to avoid overlapping with spawn area
+// --- ZOO GROUND AND PATHS ---
+// Posisi pusat zoo relatif terhadap spawn point
+const ZOO_CENTER_X = 0;
+const ZOO_CENTER_Z = 0; // Spawn point juga di (0,0,0)
+
 const floorSize = ZOO_BOUNDS_X * 2 + 20;
 const pathWidth = 8;
 
-// Main Grass Area (background layer for the whole zoo, outside spawn)
+// Main Grass Area (melingkupi seluruh area kebun binatang, tidak termasuk spawn area)
+// Kita akan membuat area rumput besar di sekitar spawn point
 createTexturedPlane(
     floorSize, floorSize,
     '/Floor/grass.jpg',
     floorSize / 5, floorSize / 5,
-    new THREE.Vector3(0, -0.1, 0)
+    new THREE.Vector3(ZOO_CENTER_X, -0.01, ZOO_CENTER_Z) // Posisi tengah kebun binatang
 );
 
-// Central North-South Path (start near spawn area, extend)
+// Jalan utama N-S dan E-W
+// Posisi jalan disesuaikan agar tidak tumpang tindih dengan spawn area (atau lewatinya)
 createTexturedPlane(
-    pathWidth, floorSize - SPAWN_AREA_SIZE / 2,
+    pathWidth, floorSize, // N-S path
     '/Floor/road.jpg',
-    1, (floorSize - SPAWN_AREA_SIZE / 2) / 10,
-    new THREE.Vector3(SPAWN_POINT_X, 0, SPAWN_POINT_Z + (floorSize - SPAWN_AREA_SIZE / 2) / 2)
+    1, floorSize / 10,
+    new THREE.Vector3(ZOO_CENTER_X, 0, ZOO_CENTER_Z)
+);
+createTexturedPlane(
+    floorSize, pathWidth, // E-W path
+    '/Floor/road.jpg',
+    floorSize / 10, 1,
+    new THREE.Vector3(ZOO_CENTER_X, 0, ZOO_CENTER_Z)
 );
 
-// Central East-West Path (start near spawn area, extend)
-createTexturedPlane(
-    floorSize - SPAWN_AREA_SIZE / 2, pathWidth,
-    '/Floor/road.jpg',
-    (floorSize - SPAWN_AREA_SIZE / 2) / 10, 1,
-    new THREE.Vector3(SPAWN_POINT_X + (floorSize - SPAWN_AREA_SIZE / 2) / 2, 0, SPAWN_POINT_Z)
-);
+// --- Menempatkan Pohon-pohon di area kebun binatang ---
+// Kita akan menempatkan pohon di area rumput, bukan di jalan atau spawn area
+// Posisi acak di luar area spawn dan di dalam batas zoo
+function placeRandomTree(treePath, scale) {
+    const maxAttempt = 50; // Max attempts to find a good spot
+    for(let i = 0; i < maxAttempt; i++) {
+        const randomX = (Math.random() * (ZOO_BOUNDS_X * 2 - 20)) - (ZOO_BOUNDS_X - 10);
+        const randomZ = (Math.random() * (ZOO_BOUNDS_Z * 2 - 20)) - (ZOO_BOUNDS_Z - 10);
+        const testPos = new THREE.Vector3(randomX, 0, randomZ);
 
-// Path segment to connect spawn to main paths
-createTexturedPlane(
-    pathWidth, SPAWN_AREA_SIZE / 2, // path from spawn to main east-west path
-    '/Floor/road.jpg',
-    1, (SPAWN_AREA_SIZE / 2) / 10,
-    new THREE.Vector3(SPAWN_POINT_X, 0, SPAWN_POINT_Z + SPAWN_AREA_SIZE / 4)
-);
+        // Avoid placing trees directly on the main paths or spawn area
+        const isInSpawnArea = (randomX > SPAWN_POINT_X - SPAWN_AREA_WIDTH/2 && randomX < SPAWN_POINT_X + SPAWN_AREA_WIDTH/2 &&
+                              randomZ > SPAWN_POINT_Z - SPAWN_AREA_DEPTH/2 && randomZ < SPAWN_POINT_Z + SPAWN_AREA_DEPTH/2);
+        
+        const isInMainPathX = (randomX > ZOO_CENTER_X - pathWidth/2 && randomX < ZOO_CENTER_X + pathWidth/2);
+        const isInMainPathZ = (randomZ > ZOO_CENTER_Z - pathWidth/2 && randomZ < ZOO_CENTER_Z + pathWidth/2);
+
+        if (!isInSpawnArea && !(isInMainPathX || isInMainPathZ)) {
+            loadAndPlaceModel(treePath, scale, testPos, Math.random() * Math.PI * 2)
+                .catch(e => console.error(`Error loading tree ${treePath}: ${e.message}`));
+            return; // Placed one tree, exit
+        }
+    }
+    console.warn(`Could not find a suitable spot for a tree of type ${treePath}.`);
+}
+
+// Place multiple trees
+for(let i = 0; i < 15; i++) placeRandomTree('/Building/pine_tree.glb', new THREE.Vector3(0.05, 0.05, 0.05));
+for(let i = 0; i < 10; i++) placeRandomTree('/Building/oak_trees.glb', new THREE.Vector3(0.01, 0.01, 0.01));
+for(let i = 0; i < 8; i++) placeRandomTree('/Building/stylized_tree.glb', new THREE.Vector3(0.005, 0.005, 0.005));
 
 
 // --- MAP BOARD (Loaded at startup) ---
+// Posisi relatif terhadap pusat kebun binatang
 loadAndPlaceModel('/Wall/note_board_-mb.glb', new THREE.Vector3(0.1, 0.1, 0.1), new THREE.Vector3(10, 2, ZOO_BOUNDS_Z - 10), Math.PI / 4)
     .catch(e => console.error(`Error loading Map Board: ${e.message}`));
 
@@ -743,11 +809,11 @@ function animate() {
     animalMixers.forEach(mixer => mixer.update(deltaTime));
 
     checkLeverInteraction(); // Check for lever interaction every frame
+    updateBuildZoneButtons(); // Update button visibility/state every frame
 
     TWEEN.update();
     renderer.render(scene, camera);
-    labelRenderer.render(scene, camera);
-    // updateBuildZoneButtons() dipanggil di sini juga untuk real-time update
+    labelRenderer.render(scene, camera); // Render CSS2D elements
 }
 
 // Initial setup for the tycoon game
