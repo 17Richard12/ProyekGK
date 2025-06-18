@@ -11,7 +11,6 @@
         margin: 0;
         overflow: hidden;
         font-family: 'Arial', sans-serif;
-        /* Tambahkan ini jika Anda ingin memastikan body mengambil tinggi penuh viewport */
         height: 100vh;
         width: 100vw;
     }
@@ -57,52 +56,27 @@
         background-color: #45a049;
     }
 
-    #shopPanel {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 400px;
-        max-height: 80vh;
-        overflow-y: auto;
-        background-color: rgba(0, 0, 0, 0.8);
-        color: white;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-        display: none;
-        z-index: 101;
-    }
-    #shopPanel h2 {
-        text-align: center;
-        margin-top: 0;
-        color: #FFD700;
-    }
-    .shop-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 10px 0;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-    }
-    .shop-item:last-child {
-        border-bottom: none;
-    }
-    .shop-item button {
-        background-color: #007bff;
+    /* Style untuk tombol pembelian 3D */
+    .build-button {
+        background-color: #007bff; /* Blue */
         color: white;
         padding: 8px 15px;
         border: none;
         border-radius: 5px;
         cursor: pointer;
+        font-size: 16px;
+        font-weight: bold;
         transition: background-color 0.3s ease;
     }
-    .shop-item button:hover {
+    .build-button:hover {
         background-color: #0056b3;
     }
-    .shop-item button:disabled {
+    .build-button:disabled {
         background-color: #6c757d;
         cursor: not-allowed;
+    }
+    .build-button.hidden {
+        display: none;
     }
 </style>
 <body>
@@ -114,12 +88,7 @@
 
     <button id="collectButton">Collect Money (C)</button>
 
-    <div id="shopPanel">
-        <h2>Zoo Shop</h2>
-        <div id="shopItems">
-            </div>
-        <p style="text-align: center; margin-top: 20px;">Press 'B' to open/close shop.</p>
-    </div>
+    <div id="labels"></div>
 
     <script type="module" src="./src/main.js"></script>
 </body>

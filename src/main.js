@@ -3,6 +3,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Octree } from 'three/addons/math/Octree.js';
 import { Capsule } from 'three/addons/math/Capsule.js';
 import TWEEN from '@tweenjs/tween.js';
+// Import CSS2DRenderer dan CSS2DObject
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
 // INIT===============================================
 
@@ -11,12 +13,9 @@ const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerH
 camera.rotation.order = 'YXZ';
 
 const container = document.getElementById('container');
-// Pastikan elemen-elemen ini ada di index.html
 const uncollectedMoneyDisplay = document.getElementById('uncollectedMoneyDisplay');
 const collectedMoneyDisplay = document.getElementById('collectedMoneyDisplay');
 const collectButton = document.getElementById('collectButton');
-const shopPanel = document.getElementById('shopPanel');
-const shopItemsContainer = document.getElementById('shopItems');
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
@@ -26,28 +25,38 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 container.appendChild(renderer.domElement);
 
+// Setup CSS2DRenderer for 3D UI labels/buttons
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(window.innerWidth, window.innerHeight);
+labelRenderer.domElement.style.position = 'absolute';
+labelRenderer.domElement.style.top = '0px';
+labelRenderer.domElement.style.pointerEvents = 'none'; // Allow clicks to pass through
+document.body.appendChild(labelRenderer.domElement);
+
+
 window.addEventListener('resize', onWindowResize);
 
 function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    labelRenderer.setSize(window.innerWidth, window.innerHeight); // Update label renderer size
 }
 
 // TYCOON MONEY SYSTEM ===============================================
 let playerMoney = 0;
 let uncollectedMoney = 0;
-const purchasedRevenueSources = {}; // Object to store purchased animals and their count for revenue calculation
+const purchasedRevenueSources = {};
 
 function updateCollectedMoneyDisplay() {
-    if (collectedMoneyDisplay) { // Periksa keberadaan elemen
+    if (collectedMoneyDisplay) {
         collectedMoneyDisplay.innerText = `💵 ${playerMoney}`;
     }
 }
 
 function updateUncollectedMoneyDisplay() {
-    if (uncollectedMoneyDisplay) { // Periksa keberadaan elemen
-        uncollectedMoneyDisplay.innerText = `💰 ${Math.floor(uncollectedMoney)}`; // Bulatkan uncollected money
+    if (uncollectedMoneyDisplay) {
+        uncollectedMoneyDisplay.innerText = `💰 ${Math.floor(uncollectedMoney)}`;
     }
 }
 
@@ -57,8 +66,7 @@ function generateMoneyFromRevenueSources() {
         const data = purchasedRevenueSources[animalType];
         const count = data.count;
         const baseIncome = data.baseIncome;
-        // Income increases by 10% for each animal of the same type
-        totalIncome += baseIncome * (1 + (count - 1) * 0.1);
+        totalIncome += baseIncome * (1 + (count - 1) * 0.1); // 10% increase per animal
     }
     uncollectedMoney += totalIncome;
     updateUncollectedMoneyDisplay();
@@ -71,15 +79,13 @@ function collectMoney() {
         updateCollectedMoneyDisplay();
         updateUncollectedMoneyDisplay();
         console.log(`Collected! Player Money: ${playerMoney}`);
-        updateShopButtons();
+        updateBuildZoneButtons(); // Update buttons after collecting money
     }
 }
 
-// Pastikan tombol collectButton sudah ada sebelum menambahkan event listener
 if (collectButton) {
     collectButton.addEventListener('click', collectMoney);
 }
-
 
 // PLAYER CONTROLS & PHYSICS =========================================
 const clock = new THREE.Clock();
@@ -88,8 +94,7 @@ const STEPS_PER_FRAME = 2;
 
 const worldOctree = new Octree();
 
-// Initial player spawn point inside the zoo, near the center path
-// So player can immediately see paths and external fence, and open shop.
+// Player spawns INSIDE the zoo, near the main paths
 const playerCollider = new Capsule(new THREE.Vector3(0, 0.8, 0), new THREE.Vector3(0, 1.2, 0), 0.8);
 
 const playerVelocity = new THREE.Vector3();
@@ -102,7 +107,6 @@ const keyStates = {};
 let zooGate;
 let isGateOpen = false;
 let isGateAnimating = false;
-let isShopOpen = false;
 
 document.addEventListener('keydown', (event) => {
     keyStates[event.code] = true;
@@ -113,9 +117,6 @@ document.addEventListener('keydown', (event) => {
     if (event.code === 'KeyC') {
         collectMoney();
     }
-    if (event.code === 'KeyB') {
-        toggleShop();
-    }
 });
 
 document.addEventListener('keyup', (event) => {
@@ -123,8 +124,7 @@ document.addEventListener('keyup', (event) => {
 });
 
 container.addEventListener('click', (event) => {
-    // Only request pointer lock if shop is not open
-    if (!isShopOpen && document.pointerLockElement !== document.body) {
+    if (document.pointerLockElement !== document.body) {
         document.body.requestPointerLock();
     }
 });
@@ -186,12 +186,7 @@ function getSideVector() {
 }
 
 function controls(deltaTime) {
-    if (isShopOpen) {
-        // Stop player movement when shop is open
-        playerVelocity.set(0, 0, 0);
-        return;
-    }
-
+    // No shop panel to disable controls for now, only 3D buttons.
     const speedDelta = deltaTime * (playerOnFloor ? 25 : 8);
 
     if (keyStates['KeyW']) {
@@ -218,7 +213,6 @@ function controls(deltaTime) {
 }
 
 function teleportPlayerIfOob() {
-    // If player falls below the world, reset to a safe position inside the zoo
     if (camera.position.y <= -25) {
         playerCollider.start.set(0, 0.8, 0); // Reset to center of zoo
         playerCollider.end.set(0, 1.2, 0);
@@ -237,8 +231,8 @@ const animalMixers = [];
 function createTexturedPlane(width, depth, texturePath, repeatX, repeatY, position, rotationY = 0) {
     const geometry = new THREE.PlaneGeometry(width, depth);
     const texture = textureLoader.load(texturePath,
-        () => {}, // On load
-        undefined, // On progress
+        () => {},
+        undefined,
         (error) => { console.error(`Error loading texture ${texturePath}:`, error); }
     );
     texture.wrapS = THREE.RepeatWrapping;
@@ -272,323 +266,245 @@ function loadAndPlaceModel(path, scale, position, rotationY = 0) {
             scene.add(model);
             worldOctree.fromGraphNode(model);
             resolve(model);
-        }, undefined, (error) => { // Error callback for GLTF loader
+        }, undefined, (error) => {
             console.error(`Error loading GLB model ${path}:`, error);
             reject(error);
         });
     });
 }
 
-async function placeAnimalEnclosure(
-    type,
-    animalPath,
-    mainCagePath,
-    animalScale,
-    mainCageScale,
-    animalPos,
-    mainCagePos,
-    floorType,
-    woodFenceScale
-) {
-    try {
-        const mainCage = await loadAndPlaceModel(mainCagePath, mainCageScale, mainCagePos);
-        const animal = await loadAndPlaceModel(animalPath, animalScale, animalPos);
+// Helper to create wooden fences around a given central point for a cage
+async function createWoodenFenceAroundArea(centerX, centerZ, cageWidth, cageDepth, woodFenceScale) {
+    const WOOD_FENCE_MODEL_LENGTH = 10; // This is the approximate length of your fence_wood.glb model
+    const halfCageWidth = cageWidth / 2;
+    const halfCageDepth = cageDepth / 2;
+    const fenceOffset = 0.5; // Small offset to prevent z-fighting with the main cage model or floor
 
-        // Add animal to revenue sources
-        if (!purchasedRevenueSources[type]) {
-            purchasedRevenueSources[type] = {
-                count: 0,
-                baseIncome: 10 // Base income per animal per interval
-            };
-        }
-        purchasedRevenueSources[type].count++;
+    const placeFenceSegment = async (x, z, rotationY) => {
+        await loadAndPlaceModel('/Wall/fence_wood.glb', woodFenceScale, new THREE.Vector3(x, 0, z), rotationY);
+    };
 
+    // Calculate the number of segments needed along each side
+    const numSegmentsX = Math.ceil(cageWidth / WOOD_FENCE_MODEL_LENGTH);
+    const numSegmentsZ = Math.ceil(cageDepth / WOOD_FENCE_MODEL_LENGTH);
 
-        let cageFloorTexturePath;
-        let repeatFactor = 1;
-        switch (floorType) {
-            case 'grass': cageFloorTexturePath = '/Floor/grass.jpg'; repeatFactor = 0.5; break;
-            case 'sand': cageFloorTexturePath = '/Floor/sand.jpg'; repeatFactor = 0.8; break;
-            case 'tile': cageFloorTexturePath = '/Floor/tile.jpg'; repeatFactor = 0.5; break;
-            default: cageFloorTexturePath = '/Floor/grass.jpg'; repeatFactor = 0.5;
-        }
-        const floorWidth = mainCageScale.x * 10;
-        const floorDepth = mainCageScale.z * 10;
-        createTexturedPlane(
-            floorWidth, floorDepth,
-            cageFloorTexturePath,
-            floorWidth * repeatFactor, floorDepth * repeatFactor,
-            new THREE.Vector3(mainCagePos.x, -0.01, mainCagePos.z)
-        );
-
-        // Create wooden fences around the cage
-        const WOOD_FENCE_MODEL_LENGTH = 10; // This is the actual length of your fence_wood.glb model
-        const halfCageWidth = (mainCageScale.x * WOOD_FENCE_MODEL_LENGTH) / 2;
-        const halfCageDepth = (mainCageScale.z * WOOD_FENCE_MODEL_LENGTH) / 2;
-
-        const fenceOffset = 0.5; // Small offset to prevent z-fighting with the main cage model
-
-        // Helper to place single fence segment and handle collision
-        const placeFenceSegment = async (x, z, rotationY) => {
-            const fence = await loadAndPlaceModel('/Wall/fence_wood.glb', woodFenceScale, new THREE.Vector3(x, 0, z), rotationY);
-            // Optionally, update collision for individual fences
-            // For simplicity, worldOctree.fromGraphNode(scene) will update all at once
-        };
-        
-        // Calculate the number of segments needed
-        const numSegmentsX = Math.ceil(halfCageWidth * 2 / WOOD_FENCE_MODEL_LENGTH);
-        const numSegmentsZ = Math.ceil(halfCageDepth * 2 / WOOD_FENCE_MODEL_LENGTH);
-
-        // North side (along Z positive)
-        for (let i = 0; i < numSegmentsX; i++) {
-            const xPos = mainCagePos.x - halfCageWidth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
-            await placeFenceSegment(xPos, mainCagePos.z + halfCageDepth + fenceOffset, 0);
-        }
-        // South side (along Z negative)
-        for (let i = 0; i < numSegmentsX; i++) {
-            const xPos = mainCagePos.x - halfCageWidth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
-            await placeFenceSegment(xPos, mainCagePos.z - halfCageDepth - fenceOffset, 0);
-        }
-        // East side (along X positive)
-        for (let i = 0; i < numSegmentsZ; i++) {
-            const zPos = mainCagePos.z - halfCageDepth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
-            await placeFenceSegment(mainCagePos.x + halfCageWidth + fenceOffset, zPos, Math.PI / 2);
-        }
-        // West side (along X negative)
-        for (let i = 0; i < numSegmentsZ; i++) {
-            const zPos = mainCagePos.z - halfCageDepth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
-            await placeFenceSegment(mainCagePos.x - halfCageWidth - fenceOffset, zPos, -Math.PI / 2);
-        }
-
-        // If animal has animations
-        if (animal.animations && animal.animations.length > 0) {
-            const mixer = new THREE.AnimationMixer(animal);
-            const action = mixer.clipAction(animal.animations[0]);
-            action.play();
-            animalMixers.push(mixer);
-        }
-
-        // Rebuild octree after adding new objects
-        worldOctree.fromGraphNode(scene);
-        console.log(`${type} enclosure placed!`);
-
-    } catch (error) {
-        console.error(`Error placing ${type} enclosure:`, error);
+    // North side (along Z positive)
+    for (let i = 0; i < numSegmentsX; i++) {
+        const xPos = centerX - halfCageWidth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
+        await placeFenceSegment(xPos, centerZ + halfCageDepth + fenceOffset, 0);
+    }
+    // South side (along Z negative)
+    for (let i = 0; i < numSegmentsX; i++) {
+        const xPos = centerX - halfCageWidth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
+        await placeFenceSegment(xPos, centerZ - halfCageDepth - fenceOffset, 0);
+    }
+    // East side (along X positive)
+    for (let i = 0; i < numSegmentsZ; i++) {
+        const zPos = centerZ - halfCageDepth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
+        await placeFenceSegment(centerX + halfCageWidth + fenceOffset, zPos, Math.PI / 2);
+    }
+    // West side (along X negative)
+    for (let i = 0; i < numSegmentsZ; i++) {
+        const zPos = centerZ - halfCageDepth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
+        await placeFenceSegment(centerX - halfCageWidth - fenceOffset, zPos, -Math.PI / 2);
     }
 }
 
 
-// TYCOON SHOP DEFINITION =============================================
-const SHOP_ITEMS = [
+// TYCOON BUILD ZONE MANAGEMENT ========================================
+
+const BUILD_ZONES = [
     {
-        id: 'buffalo_enclosure',
-        name: 'Buffalo Enclosure',
-        baseCost: 200,
-        currentCost: 200, // Dynamic current cost
-        purchasedCount: 0,
-        type: 'animal_enclosure',
-        placement: {
+        id: 'zone1',
+        position: new THREE.Vector3(-30, 0, -10),
+        status: 'empty', // 'empty', 'cage_purchased', 'animal_purchased'
+        currentCost: 0,
+        button: null, // CSS2DObject for the button
+        cageData: {
+            name: 'Buffalo Cage',
+            baseCost: 200,
             animalPath: '/Animal/african_buffalo.glb',
             mainCagePath: '/Building/jail_cage.glb',
             animalScale: new THREE.Vector3(0.5, 0.5, 0.5),
-            mainCageScale: new THREE.Vector3(1.5, 1.5, 1.5),
+            mainCageScale: new THREE.Vector3(1.5, 1.5, 1.5), // This implies a 15x15 unit cage area
             floorType: 'grass',
             woodFenceScale: new THREE.Vector3(0.5, 0.5, 0.5),
-        },
-        nextPosition: new THREE.Vector3(-30, 0, -10), // Starting position for first buffalo cage
-        positionOffset: new THREE.Vector3(0, 0, 25), // Move next cage 25 units on Z for new row
-        maxItems: 5 // Example limit
+            baseIncome: 10
+        }
     },
     {
-        id: 'elephant_enclosure',
-        name: 'Elephant Enclosure',
-        baseCost: 300,
-        currentCost: 300,
-        purchasedCount: 0,
-        type: 'animal_enclosure',
-        placement: {
+        id: 'zone2',
+        position: new THREE.Vector3(30, 0, -10),
+        status: 'empty',
+        currentCost: 0,
+        button: null,
+        cageData: {
+            name: 'Elephant Cage',
+            baseCost: 300,
             animalPath: '/Animal/elephant.glb',
             mainCagePath: '/Building/jail_cage.glb',
             animalScale: new THREE.Vector3(0.08, 0.08, 0.08),
-            mainCageScale: new THREE.Vector3(2.5, 2.5, 2.5),
+            mainCageScale: new THREE.Vector3(2.5, 2.5, 2.5), // This implies a 25x25 unit cage area
             floorType: 'sand',
             woodFenceScale: new THREE.Vector3(0.5, 0.5, 0.5),
-        },
-        nextPosition: new THREE.Vector3(30, 0, -10),
-        positionOffset: new THREE.Vector3(0, 0, 25),
-        maxItems: 5
+            baseIncome: 15
+        }
     },
     {
-        id: 'giraffe_enclosure',
-        name: 'Giraffe Enclosure',
-        baseCost: 250,
-        currentCost: 250,
-        purchasedCount: 0,
-        type: 'animal_enclosure',
-        placement: {
+        id: 'zone3',
+        position: new THREE.Vector3(-10, 0, -30),
+        status: 'empty',
+        currentCost: 0,
+        button: null,
+        cageData: {
+            name: 'Giraffe Cage',
+            baseCost: 250,
             animalPath: '/Animal/giraffe.glb',
             mainCagePath: '/Building/jail_cage.glb',
             animalScale: new THREE.Vector3(0.02, 0.02, 0.02),
             mainCageScale: new THREE.Vector3(1.5, 1.5, 1.5),
             floorType: 'grass',
             woodFenceScale: new THREE.Vector3(0.5, 0.5, 0.5),
-        },
-        nextPosition: new THREE.Vector3(-10, 0, -30),
-        positionOffset: new THREE.Vector3(25, 0, 0), // Move next on X
-        maxItems: 5
-    },
-    {
-        id: 'lion_enclosure',
-        name: 'Lion Enclosure',
-        baseCost: 280,
-        currentCost: 280,
-        purchasedCount: 0,
-        type: 'animal_enclosure',
-        placement: {
-            animalPath: '/Animal/lion_lowpoly1.glb',
-            mainCagePath: '/Building/jail_cage.glb',
-            animalScale: new THREE.Vector3(0.05, 0.05, 0.05),
-            mainCageScale: new THREE.Vector3(1.5, 1.5, 1.5),
-            floorType: 'sand',
-            woodFenceScale: new THREE.Vector3(0.5, 0.5, 0.5),
-        },
-        nextPosition: new THREE.Vector3(10, 0, -30),
-        positionOffset: new THREE.Vector3(25, 0, 0),
-        maxItems: 5
-    },
-    {
-        id: 'pine_tree',
-        name: 'Pine Tree',
-        baseCost: 50,
-        currentCost: 50,
-        purchasedCount: 0,
-        type: 'decoration',
-        placement: {
-            path: '/Building/pine_tree.glb',
-            scale: new THREE.Vector3(0.05, 0.05, 0.05),
-        },
-        // For decorations, nextPosition is just a conceptual starting point, actual placement is randomized
-        nextPosition: new THREE.Vector3(0, 0, 0),
-        positionOffset: new THREE.Vector3(0, 0, 0),
-        maxItems: 20
+            baseIncome: 12
+        }
     }
-    // Tambahkan hewan lain di sini jika diperlukan, dengan baseCost dan currentCost
+    // Tambahkan lebih banyak zona jika diinginkan
 ];
 
-function generateShopItems() {
-    // Pastikan shopItemsContainer ada
-    if (!shopItemsContainer) {
-        console.error("Shop items container not found!");
-        return;
-    }
-    shopItemsContainer.innerHTML = ''; // Clear previous items
-    SHOP_ITEMS.forEach(item => {
-        const displayCost = item.purchasedCount === 0 ? item.baseCost : item.currentCost;
-        const disabled = playerMoney < displayCost || (item.maxItems && item.purchasedCount >= item.maxItems);
+const WOOD_FENCE_MODEL_LENGTH_UNIT = 10; // Assuming 1 unit of cage scale relates to 10 units of world space
 
-        const itemElement = document.createElement('div');
-        itemElement.classList.add('shop-item');
+// Initialize build zone buttons
+function initializeBuildZones() {
+    BUILD_ZONES.forEach(zone => {
+        const buttonDiv = document.createElement('div');
+        buttonDiv.className = 'build-button';
+        buttonDiv.style.pointerEvents = 'auto'; // Make button clickable
         
-        itemElement.innerHTML = `
-            <span>${item.name} (Cost: 💵${displayCost}) (Owned: ${item.purchasedCount}${item.maxItems ? `/${item.maxItems}` : ''})</span>
-            <button id="buy-${item.id}" ${disabled ? 'disabled' : ''}>Buy</button>
-        `;
-        shopItemsContainer.appendChild(itemElement);
+        const buttonObject = new CSS2DObject(buttonDiv);
+        buttonObject.position.set(zone.position.x, zone.position.y + 1, zone.position.z); // Position above the ground
+        scene.add(buttonObject);
+        zone.button = buttonObject;
 
-        const buyButton = itemElement.querySelector(`#buy-${item.id}`);
-        if (buyButton) { // Pastikan tombol ada sebelum menambahkan event listener
-            buyButton.addEventListener('click', () => buyItem(item.id));
-        }
+        // Add event listener to the HTML div inside the 3D object
+        buttonDiv.addEventListener('click', () => {
+            handleBuildZoneClick(zone.id);
+        });
     });
-    updateShopButtons(); // Initial update
+    updateBuildZoneButtons(); // Set initial state
 }
 
-function updateShopButtons() {
-    SHOP_ITEMS.forEach(item => {
-        const button = document.getElementById(`buy-${item.id}`);
-        if (button) {
-            const displayCost = item.purchasedCount === 0 ? item.baseCost : item.currentCost;
-            const disabled = playerMoney < displayCost || (item.maxItems && item.purchasedCount >= item.maxItems);
-            button.disabled = disabled;
-            button.parentElement.querySelector('span').innerText = `
-                ${item.name} (Cost: 💵${displayCost}) (Owned: ${item.purchasedCount}${item.maxItems ? `/${item.maxItems}` : ''})
-            `;
+function updateBuildZoneButtons() {
+    BUILD_ZONES.forEach(zone => {
+        const buttonDiv = zone.button.element; // Get the HTML element
+        let buttonText = '';
+        let isDisabled = false;
+        let cost = 0;
+
+        if (zone.status === 'empty') {
+            cost = zone.cageData.baseCost * (2 ** zone.currentCost); // Harga naik 100% setiap kali
+            buttonText = `Buy ${zone.cageData.name} (💵${cost})`;
+            isDisabled = playerMoney < cost;
+            zone.currentCost = cost; // Update current cost for the zone
+        } else if (zone.status === 'cage_purchased') {
+            cost = zone.cageData.baseCost * (2 ** (zone.cageData.purchasedAnimals || 0)); // Harga hewan juga naik
+            buttonText = `Add ${zone.cageData.name.replace(' Cage', '')} (💵${cost})`;
+            isDisabled = playerMoney < cost;
+            zone.currentCost = cost; // Update current cost for the zone
+        } else if (zone.status === 'animal_purchased') {
+            // Check if max animals reached for this cage type
+            const purchasedCountForType = purchasedRevenueSources[zone.cageData.name.replace(' Cage', '')]?.count || 0;
+            const maxAnimals = 3; // Example: Max 3 animals per cage
+            if (purchasedCountForType < maxAnimals) {
+                cost = zone.cageData.baseCost * (2 ** purchasedCountForType);
+                buttonText = `Add another ${zone.cageData.name.replace(' Cage', '')} (💵${cost})`;
+                isDisabled = playerMoney < cost;
+                zone.currentCost = cost;
+            } else {
+                buttonText = `${zone.cageData.name.replace(' Cage', '')} MAXED!`;
+                isDisabled = true;
+            }
+        }
+
+        buttonDiv.innerText = buttonText;
+        buttonDiv.disabled = isDisabled;
+
+        // Hide button if too far from player
+        const distanceToPlayer = camera.position.distanceTo(zone.position);
+        if (distanceToPlayer > 15 || isDisabled) { // Hide if far or cannot afford
+             buttonDiv.classList.add('hidden');
+        } else {
+             buttonDiv.classList.remove('hidden');
         }
     });
 }
 
-async function buyItem(itemId) {
-    const item = SHOP_ITEMS.find(i => i.id === itemId);
+async function handleBuildZoneClick(zoneId) {
+    const zone = BUILD_ZONES.find(z => z.id === zoneId);
+    if (!zone || zone.button.element.disabled) return;
 
-    if (!item) {
-        console.error('Item not found:', itemId);
+    const cost = zone.currentCost; // Use the currently displayed cost
+
+    if (playerMoney < cost) {
+        console.warn(`Not enough money for ${zone.status === 'empty' ? 'cage' : 'animal'}: ${zone.cageData.name}`);
         return;
     }
 
-    const currentPurchaseCost = item.purchasedCount === 0 ? item.baseCost : item.currentCost;
-
-    if (playerMoney < currentPurchaseCost) {
-        console.warn('Not enough money to buy', item.name);
-        return;
-    }
-    if (item.maxItems && item.purchasedCount >= item.maxItems) {
-        console.warn(`Max items reached for ${item.name}`);
-        return;
-    }
-
-    playerMoney -= currentPurchaseCost;
-    item.purchasedCount++; // Increment purchased count
-
-    // Update current cost for next purchase
-    item.currentCost = item.baseCost * (2 ** (item.purchasedCount)); // Double price for EACH purchase after base (so base * 2^0, base * 2^1, etc)
-
+    playerMoney -= cost;
     updateCollectedMoneyDisplay();
-    updateShopButtons();
 
-    console.log(`Purchased ${item.name}! Remaining money: ${playerMoney}`);
-
-    // Place the item in the world
-    if (item.type === 'animal_enclosure') {
-        const actualPosition = item.nextPosition.clone();
-        await placeAnimalEnclosure(
-            item.id, // type for income tracking
-            item.placement.animalPath,
-            item.placement.mainCagePath,
-            item.placement.animalScale,
-            item.placement.mainCageScale,
-            actualPosition,
-            actualPosition,
-            item.placement.floorType,
-            item.placement.woodFenceScale
-        );
-        // Update next position for the same item type
-        item.nextPosition.add(item.positionOffset);
-
-    } else if (item.type === 'decoration') {
-        const randomX = (Math.random() * (ZOO_BOUNDS_X * 2 - 20)) - (ZOO_BOUNDS_X - 10);
-        const randomZ = (Math.random() * (ZOO_BOUNDS_Z * 2 - 20)) - (ZOO_BOUNDS_Z - 10);
-        const randomPosition = new THREE.Vector3(randomX, 0, randomZ);
-
+    if (zone.status === 'empty') {
+        // Buy Cage
         await loadAndPlaceModel(
-            item.placement.path,
-            item.placement.scale,
-            randomPosition,
-            Math.random() * Math.PI * 2
+            zone.cageData.mainCagePath,
+            zone.cageData.mainCageScale,
+            zone.position
         );
-    }
-    worldOctree.fromGraphNode(scene);
-}
+        await createWoodenFenceAroundArea(
+            zone.position.x, zone.position.z,
+            zone.cageData.mainCageScale.x * WOOD_FENCE_MODEL_LENGTH_UNIT,
+            zone.cageData.mainCageScale.z * WOOD_FENCE_MODEL_LENGTH_UNIT,
+            zone.cageData.woodFenceScale
+        );
+        createTexturedPlane(
+            zone.cageData.mainCageScale.x * WOOD_FENCE_MODEL_LENGTH_UNIT,
+            zone.cageData.mainCageScale.z * WOOD_FENCE_MODEL_LENGTH_UNIT,
+            `/Floor/${zone.cageData.floorType}.jpg`,
+            zone.cageData.mainCageScale.x * 0.5,
+            zone.cageData.mainCageScale.z * 0.5,
+            new THREE.Vector3(zone.position.x, -0.01, zone.position.z)
+        );
+        zone.status = 'cage_purchased';
+        console.log(`${zone.cageData.name} purchased and placed!`);
 
-function toggleShop() {
-    isShopOpen = !isShopOpen;
-    if (isShopOpen) {
-        shopPanel.style.display = 'block';
-        document.exitPointerLock();
-    } else {
-        shopPanel.style.display = 'none';
-        // When closing shop, player might want to resume movement
-        // We'll let the user click on the canvas to re-engage pointer lock
+    } else if (zone.status === 'cage_purchased' || zone.status === 'animal_purchased') {
+        // Buy Animal
+        const animalName = zone.cageData.name.replace(' Cage', '');
+        await loadAndPlaceModel(
+            zone.cageData.animalPath,
+            zone.cageData.animalScale,
+            zone.position // Place animal at cage center
+        );
+        
+        // Add animal to revenue sources
+        if (!purchasedRevenueSources[animalName]) {
+            purchasedRevenueSources[animalName] = {
+                count: 0,
+                baseIncome: zone.cageData.baseIncome
+            };
+        }
+        purchasedRevenueSources[animalName].count++;
+        zone.cageData.purchasedAnimals = (zone.cageData.purchasedAnimals || 0) + 1;
+
+        if (purchasedRevenueSources[animalName].count >= 3) { // Example: Max 3 animals per cage
+            zone.status = 'animal_purchased'; // Mark as having animal (or maxed)
+        } else {
+            zone.status = 'cage_purchased'; // Still allow adding more animals if not maxed
+        }
+        console.log(`${animalName} purchased and placed in ${zone.cageData.name}!`);
     }
+    
+    worldOctree.fromGraphNode(scene); // Rebuild octree after adding new objects
+    updateBuildZoneButtons(); // Update buttons state
 }
 
 // ZOO LAYOUT: Initial static elements (external fence, gate, main paths, map board)
@@ -605,7 +521,7 @@ for (let x = -ZOO_BOUNDS_X + FENCE_SEGMENT_LENGTH / 2; x < ZOO_BOUNDS_X; x += FE
         .catch(e => console.error(`Error loading North Fence: ${e.message}`));
 }
 // South Fence
-for (let x = -ZOO_BOUNDs_X + FENCE_SEGMENT_LENGTH / 2; x < ZOO_BOUNDS_X; x += FENCE_SEGMENT_LENGTH) {
+for (let x = -ZOO_BOUNDS_X + FENCE_SEGMENT_LENGTH / 2; x < ZOO_BOUNDS_X; x += FENCE_SEGMENT_LENGTH) {
     loadAndPlaceModel('/Wall/simple_bricks_and_steel_fence.glb', brickFenceScale, new THREE.Vector3(x, 0, -ZOO_BOUNDS_Z))
         .catch(e => console.error(`Error loading South Fence: ${e.message}`));
 }
@@ -623,8 +539,8 @@ for (let z = -ZOO_BOUNDS_Z + FENCE_SEGMENT_LENGTH / 2; z < ZOO_BOUNDS_Z; z += FE
 // Main Gate
 loader.load('/Wall/gate.glb', function (gltf) {
     zooGate = gltf.scene;
-    zooGate.scale.set(5, 5, 5); // Adjust gate scale
-    zooGate.position.set(0, 0, ZOO_BOUNDS_Z); // Position at the center of the north fence
+    zooGate.scale.set(5, 5, 5);
+    zooGate.position.set(0, 0, ZOO_BOUNDS_Z);
     scene.add(zooGate);
     worldOctree.fromGraphNode(zooGate);
 }, undefined, (error) => { console.error('Error loading Gate model:', error); });
@@ -643,7 +559,7 @@ function toggleGate() {
         .onComplete(() => {
             isGateOpen = !isGateOpen;
             isGateAnimating = false;
-            worldOctree.fromGraphNode(scene); // Rebuild the entire octree
+            worldOctree.fromGraphNode(scene);
         })
         .start();
 }
@@ -686,7 +602,7 @@ createTexturedPlane(
 );
 
 // --- MAP BOARD (Loaded at startup) ---
-loadMapBoard(new THREE.Vector3(10, 2, ZOO_BOUNDS_Z - 10), Math.PI / 4, new THREE.Vector3(0.1, 0.1, 0.1))
+loadAndPlaceModel('/Wall/note_board_-mb.glb', new THREE.Vector3(0.1, 0.1, 0.1), new THREE.Vector3(10, 2, ZOO_BOUNDS_Z - 10), Math.PI / 4)
     .catch(e => console.error(`Error loading Map Board: ${e.message}`));
 
 
@@ -739,13 +655,15 @@ function animate() {
 
     TWEEN.update();
     renderer.render(scene, camera);
+    labelRenderer.render(scene, camera); // Render CSS2D elements
+    updateBuildZoneButtons(); // Update button visibility/state every frame
 }
 
 // Initial setup for the tycoon game
-playerMoney = 500; // Starting money, adjust as needed
+playerMoney = 500; // Starting money
 updateCollectedMoneyDisplay();
 updateUncollectedMoneyDisplay();
 setInterval(generateMoneyFromRevenueSources, 1000); // Generate income every second
-generateShopItems(); // Populate the shop UI on startup
+initializeBuildZones(); // Setup initial build zone buttons
 
 animate();
