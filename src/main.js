@@ -32,6 +32,7 @@ labelRenderer.domElement.style.position = 'absolute';
 labelRenderer.domElement.style.top = '0px';
 labelRenderer.domElement.style.pointerEvents = 'none'; // Allow clicks to pass through
 document.body.appendChild(labelRenderer.domElement);
+console.log("CSS2DRenderer added. pointer-events set to 'none'.");
 
 
 window.addEventListener('resize', onWindowResize);
@@ -138,7 +139,7 @@ const worldOctree = new Octree();
 // --- Spawn Point Coordinates ---
 const SPAWN_POINT_X = 0;
 const SPAWN_POINT_Z = 0;
-const SPAWN_POINT_Y_CAPSULE_BOTTOM = 0.8;
+const SPAWN_POINT_Y_CAPSULE_BOTTOM = 0.8; // Initial player height
 const playerCollider = new Capsule(
     new THREE.Vector3(SPAWN_POINT_X, SPAWN_POINT_Y_CAPSULE_BOTTOM, SPAWN_POINT_Z),
     new THREE.Vector3(SPAWN_POINT_X, SPAWN_POINT_Y_CAPSULE_BOTTOM + 0.4, SPAWN_POINT_Z),
@@ -182,6 +183,7 @@ document.addEventListener('keyup', (event) => {
 container.addEventListener('click', (event) => {
     if (document.pointerLockElement !== document.body) {
         document.body.requestPointerLock();
+        console.log("Pointer lock requested.");
     }
 });
 
@@ -197,6 +199,7 @@ function onDocumentMouseDown(event) {
         if (arrowPointer && arrowPointer.visible) {
             const intersects = pointerRaycaster.intersectObject(arrowPointer, true);
             if (intersects.length > 0) {
+                console.log("Arrow clicked! Teleporting...");
                 teleportToBuildZone();
             }
         }
@@ -346,8 +349,8 @@ const animalMixers = [];
 function createTexturedPlane(width, depth, texturePath, repeatX, repeatY, position, rotationY = 0) {
     const geometry = new THREE.PlaneGeometry(width, depth);
     const texture = textureLoader.load(texturePath,
-        () => {},
-        undefined,
+        () => {}, // On load
+        undefined, // On progress
         (error) => { console.error(`Error loading texture ${texturePath}:`, error); }
     );
     texture.wrapS = THREE.RepeatWrapping;
@@ -388,44 +391,48 @@ function loadAndPlaceModel(path, scale, position, rotationY = 0) {
     });
 }
 
-async function createWoodenFenceAroundArea(centerX, centerZ, cageWidth, cageDepth, woodFenceScale, initialLoad = false) {
-    const WOOD_FENCE_MODEL_LENGTH = 10;
-    const halfCageWidth = cageWidth / 2;
-    const halfCageDepth = cageDepth / 2;
-    const fenceOffset = 0.5; // Offset to avoid z-fighting with the main cage model or floor
+// Function to create wooden fences around a given central point for a cage area
+async function createWoodenFenceAroundArea(centerX, centerZ, areaWidth, areaDepth, woodFenceScale, isInitialFence = false) {
+    const WOOD_FENCE_MODEL_LENGTH = 10; // Assuming fence_wood.glb is 10 units long
+    const halfAreaWidth = areaWidth / 2;
+    const halfAreaDepth = areaDepth / 2;
+    const fenceOffset = 0.5; // Small offset from the main area
 
     const placeFenceSegment = async (x, z, rotationY) => {
         await loadAndPlaceModel('/Wall/fence_wood.glb', woodFenceScale, new THREE.Vector3(x, 0, z), rotationY);
     };
     
-    // Calculate the number of segments needed
-    // Use a small buffer to ensure full coverage on corners/edges
-    const numSegmentsX = Math.ceil((cageWidth + WOOD_FENCE_MODEL_LENGTH) / WOOD_FENCE_MODEL_LENGTH);
-    const numSegmentsZ = Math.ceil((cageDepth + WOOD_FENCE_MODEL_LENGTH) / WOOD_FENCE_MODEL_LENGTH);
+    // Calculate how many segments needed to cover the side
+    // Adjust for slight overlap to prevent gaps
+    const segmentsX = Math.max(1, Math.ceil(areaWidth / WOOD_FENCE_MODEL_LENGTH));
+    const segmentsZ = Math.max(1, Math.ceil(areaDepth / WOOD_FENCE_MODEL_LENGTH));
 
-    // Calculate actual start positions for fences to ensure they line up with the center
-    const startX = centerX - halfCageWidth + WOOD_FENCE_MODEL_LENGTH / 2;
-    const startZ = centerZ - halfCageDepth + WOOD_FENCE_MODEL_LENGTH / 2;
+    const segmentOffset = WOOD_FENCE_MODEL_LENGTH / 2; // Offset for center of segment
 
     // North side (along Z positive)
-    for (let i = 0; i < numSegmentsX; i++) {
-        const xPos = startX + (i * WOOD_FENCE_MODEL_LENGTH);
-        await placeFenceSegment(xPos, centerZ + halfCageDepth + fenceOffset, 0);
+    for (let i = 0; i < segmentsX; i++) {
+        const xPos = centerX - halfAreaWidth + segmentOffset + (i * WOOD_FENCE_MODEL_LENGTH);
+        await placeFenceSegment(xPos, centerZ + halfAreaDepth + fenceOffset, 0);
     }
     // South side (along Z negative)
-    for (let i = 0; i < numSegmentsX; i++) {
-        const xPos = startX + (i * WOOD_FENCE_MODEL_LENGTH);
-        await placeFenceSegment(xPos, centerZ - halfCageDepth - fenceOffset, 0);
+    for (let i = 0; i < segmentsX; i++) {
+        const xPos = centerX - halfAreaWidth + segmentOffset + (i * WOOD_FENCE_MODEL_LENGTH);
+        await placeFenceSegment(xPos, centerZ - halfAreaDepth - fenceOffset, 0);
     }
     // East side (along X positive)
-    for (let i = 0; i < numSegmentsZ; i++) {
-        const zPos = startZ + (i * WOOD_FENCE_MODEL_LENGTH);
-        await placeFenceSegment(centerX + halfCageWidth + fenceOffset, zPos, Math.PI / 2);
+    for (let i = 0; i < segmentsZ; i++) {
+        const zPos = centerZ - halfAreaDepth + segmentOffset + (i * WOOD_FENCE_MODEL_LENGTH);
+        await placeFenceSegment(centerX + halfAreaWidth + fenceOffset, zPos, Math.PI / 2);
     }
     // West side (along X negative)
-    for (let i = 0; i < numSegmentsZ; i++) {
-        const zPos = startZ + (i * WOOD_FENCE_MODEL_LENGTH);
-        await placeFenceSegment(centerX - halfCageWidth - fenceOffset, zPos, -Math.PI / 2);
+    for (let i = 0; i < segmentsZ; i++) {
+        const zPos = centerZ - halfAreaDepth + segmentOffset + (i * WOOD_FENCE_MODEL_LENGTH);
+        await placeFenceSegment(centerX - halfAreaWidth - fenceOffset, zPos, -Math.PI / 2);
+    }
+
+    if (isInitialFence) {
+        // Rebuild octree after all initial fences for ALL zones are loaded
+        // This is called from initializeBuildZones, which then calls worldOctree.fromGraphNode(scene) once.
     }
 }
 
@@ -434,115 +441,63 @@ async function createWoodenFenceAroundArea(centerX, centerZ, cageWidth, cageDept
 
 const BUILD_ZONES = [
     {
-        id: 'zone1',
-        position: new THREE.Vector3(-30, 0, -10),
-        status: 'empty', // 'empty', 'cage_purchased', 'animal_purchased'
-        currentPriceMultiplier: 0,
-        button: null, // CSS2DObject for the button
+        id: 'zone1', position: new THREE.Vector3(-25, 0, -20), status: 'empty', currentPriceMultiplier: 0, button: null,
         cageData: {
-            name: 'Buffalo Cage', // Used for display and income key
-            baseCost: 200,
-            animalPath: '/Animal/african_buffalo.glb',
-            mainCagePath: '/Building/jail_cage.glb',
-            animalScale: new THREE.Vector3(0.5, 0.5, 0.5),
-            mainCageScale: new THREE.Vector3(1.5, 1.5, 1.5), // This implies a 15x15 unit cage area (1.5 * 10)
-            floorType: 'grass',
-            woodFenceScale: new THREE.Vector3(0.5, 0.5, 0.5),
-            baseIncome: 10, // Base income per animal
-            maxAnimals: 3 // Max animals for this cage
-        },
-        initialFenceLoaded: false // Flag to track if initial fence is loaded
+            name: 'Buffalo Cage', baseCost: 200, animalPath: '/Animal/african_buffalo.glb', mainCagePath: '/Building/jail_cage.glb',
+            animalScale: new THREE.Vector3(0.5, 0.5, 0.5), mainCageScale: new THREE.Vector3(1.5, 1.5, 1.5), // 15x15 area
+            floorType: 'grass', woodFenceScale: new THREE.Vector3(0.5, 0.5, 0.5), baseIncome: 10, maxAnimals: 3
+        }, initialFenceLoaded: false
     },
     {
-        id: 'zone2',
-        position: new THREE.Vector3(30, 0, -10),
-        status: 'empty',
-        currentPriceMultiplier: 0,
-        button: null,
+        id: 'zone2', position: new THREE.Vector3(25, 0, -20), status: 'empty', currentPriceMultiplier: 0, button: null,
         cageData: {
-            name: 'Elephant Cage',
-            baseCost: 300,
-            animalPath: '/Animal/elephant.glb',
-            mainCagePath: '/Building/jail_cage.glb',
-            animalScale: new THREE.Vector3(0.08, 0.08, 0.08),
-            mainCageScale: new THREE.Vector3(2.5, 2.5, 2.5), // This implies a 25x25 unit cage area (2.5 * 10)
-            floorType: 'sand',
-            woodFenceScale: new THREE.Vector3(0.5, 0.5, 0.5),
-            baseIncome: 15,
-            maxAnimals: 2
-        },
-        initialFenceLoaded: false
+            name: 'Elephant Cage', baseCost: 300, animalPath: '/Animal/elephant.glb', mainCagePath: '/Building/jail_cage.glb',
+            animalScale: new THREE.Vector3(0.08, 0.08, 0.08), mainCageScale: new THREE.Vector3(2.5, 2.5, 2.5), // 25x25 area
+            floorType: 'sand', woodFenceScale: new THREE.Vector3(0.5, 0.5, 0.5), baseIncome: 15, maxAnimals: 2
+        }, initialFenceLoaded: false
     },
     {
-        id: 'zone3',
-        position: new THREE.Vector3(-10, 0, -30),
-        status: 'empty',
-        currentPriceMultiplier: 0,
-        button: null,
+        id: 'zone3', position: new THREE.Vector3(-25, 0, 20), status: 'empty', currentPriceMultiplier: 0, button: null,
         cageData: {
-            name: 'Giraffe Cage',
-            baseCost: 250,
-            animalPath: '/Animal/giraffe.glb',
-            mainCagePath: '/Building/jail_cage.glb',
-            animalScale: new THREE.Vector3(0.02, 0.02, 0.02),
-            mainCageScale: new THREE.Vector3(1.5, 1.5, 1.5),
-            floorType: 'grass',
-            woodFenceScale: new THREE.Vector3(0.5, 0.5, 0.5),
-            baseIncome: 12,
-            maxAnimals: 3
-        },
-        initialFenceLoaded: false
+            name: 'Giraffe Cage', baseCost: 250, animalPath: '/Animal/giraffe.glb', mainCagePath: '/Building/jail_cage.glb',
+            animalScale: new THREE.Vector3(0.02, 0.02, 0.02), mainCageScale: new THREE.Vector3(1.5, 1.5, 1.5),
+            floorType: 'grass', woodFenceScale: new THREE.Vector3(0.5, 0.5, 0.5), baseIncome: 12, maxAnimals: 3
+        }, initialFenceLoaded: false
     },
     {
-        id: 'zone4',
-        position: new THREE.Vector3(10, 0, -30),
-        status: 'empty',
-        currentPriceMultiplier: 0,
-        button: null,
+        id: 'zone4', position: new THREE.Vector3(25, 0, 20), status: 'empty', currentPriceMultiplier: 0, button: null,
         cageData: {
-            name: 'Lion Cage',
-            baseCost: 280,
-            animalPath: '/Animal/lion_lowpoly1.glb',
-            mainCagePath: '/Building/jail_cage.glb',
-            animalScale: new THREE.Vector3(0.05, 0.05, 0.05),
-            mainCageScale: new THREE.Vector3(1.5, 1.5, 1.5),
-            floorType: 'sand',
-            woodFenceScale: new THREE.Vector3(0.5, 0.5, 0.5),
-            baseIncome: 13,
-            maxAnimals: 2
-        },
-        initialFenceLoaded: false
+            name: 'Lion Cage', baseCost: 280, animalPath: '/Animal/lion_lowpoly1.glb', mainCagePath: '/Building/jail_cage.glb',
+            animalScale: new THREE.Vector3(0.05, 0.05, 0.05), mainCageScale: new THREE.Vector3(1.5, 1.5, 1.5),
+            floorType: 'sand', woodFenceScale: new THREE.Vector3(0.5, 0.5, 0.5), baseIncome: 13, maxAnimals: 2
+        }, initialFenceLoaded: false
     },
     {
-        id: 'zone5',
-        position: new THREE.Vector3(-30, 0, 10),
-        status: 'empty',
-        currentPriceMultiplier: 0,
-        button: null,
+        id: 'zone5', position: new THREE.Vector3(0, 0, -45), status: 'empty', currentPriceMultiplier: 0, button: null, // New position for more cages
         cageData: {
-            name: 'Gorilla Cage',
-            baseCost: 220,
-            animalPath: '/Animal/gorilla.glb',
-            mainCagePath: '/Building/jail_cage.glb',
-            animalScale: new THREE.Vector3(0.05, 0.05, 0.05),
-            mainCageScale: new THREE.Vector3(1.2, 1.2, 1.2),
-            floorType: 'tile',
-            woodFenceScale: new THREE.Vector3(0.5, 0.5, 0.5),
-            baseIncome: 11,
-            maxAnimals: 3
-        },
-        initialFenceLoaded: false
+            name: 'Gorilla Cage', baseCost: 220, animalPath: '/Animal/gorilla.glb', mainCagePath: '/Building/jail_cage.glb',
+            animalScale: new THREE.Vector3(0.05, 0.05, 0.05), mainCageScale: new THREE.Vector3(1.2, 1.2, 1.2),
+            floorType: 'tile', woodFenceScale: new THREE.Vector3(0.5, 0.5, 0.5), baseIncome: 11, maxAnimals: 3
+        }, initialFenceLoaded: false
+    },
+    {
+        id: 'zone6', position: new THREE.Vector3(0, 0, 45), status: 'empty', currentPriceMultiplier: 0, button: null, // Another new position
+        cageData: {
+            name: 'Rhino Cage', baseCost: 270, animalPath: '/Animal/rhinoceros.glb', mainCagePath: '/Building/jail_cage.glb',
+            animalScale: new THREE.Vector3(0.05, 0.05, 0.05), mainCageScale: new THREE.Vector3(2.0, 2.0, 2.0),
+            floorType: 'sand', woodFenceScale: new THREE.Vector3(0.5, 0.5, 0.5), baseIncome: 14, maxAnimals: 1
+        }, initialFenceLoaded: false
     }
 ];
 
-const WOOD_FENCE_UNIT_SCALE_MULTIPLIER = 10;
+const WOOD_FENCE_UNIT_SCALE_MULTIPLIER = 10; // Assuming jail_cage.glb scale X * this multiplier = real world width
 
 // Initialize build zone buttons AND initial fences
 async function initializeBuildZones() {
     for (const zone of BUILD_ZONES) {
         const buttonDiv = document.createElement('div');
         buttonDiv.className = 'build-button hidden';
-        buttonDiv.style.pointerEvents = 'auto';
+        buttonDiv.style.pointerEvents = 'auto'; // Make button clickable
         
         const buttonObject = new CSS2DObject(buttonDiv);
         buttonObject.position.set(zone.position.x, zone.position.y + 1, zone.position.z);
@@ -555,18 +510,19 @@ async function initializeBuildZones() {
         
         zone.currentCost = zone.cageData.baseCost;
 
-        // Create initial wooden fence around the zone
+        // Create initial wooden fence around the zone area
         if (!zone.initialFenceLoaded) {
             const cageWidth = zone.cageData.mainCageScale.x * WOOD_FENCE_UNIT_SCALE_MULTIPLIER;
             const cageDepth = zone.cageData.mainCageScale.z * WOOD_FENCE_UNIT_SCALE_MULTIPLIER;
+            console.log(`Loading initial fence for ${zone.id} at ${zone.position.x}, ${zone.position.z} with size ${cageWidth}x${cageDepth}`);
             await createWoodenFenceAroundArea(zone.position.x, zone.position.z, cageWidth, cageDepth, zone.cageData.woodFenceScale, true);
             zone.initialFenceLoaded = true;
         }
     }
-    worldOctree.fromGraphNode(scene); // Rebuild octree after all initial fences are loaded
+    worldOctree.fromGraphNode(scene); // Rebuild octree once after all initial fences are loaded
+    console.log("All initial fences loaded and octree rebuilt.");
 }
 
-// Function to find the first affordable empty zone
 function findFirstAffordableEmptyZone() {
     for (const zone of BUILD_ZONES) {
         if (zone.status === 'empty' && playerMoney >= (zone.cageData.baseCost * (2 ** zone.currentPriceMultiplier))) {
@@ -576,17 +532,16 @@ function findFirstAffordableEmptyZone() {
     return null;
 }
 
-// Function to update the arrow pointer
 function updateArrowPointer() {
     const targetZone = findFirstAffordableEmptyZone();
 
     if (targetZone && arrowPointer) {
         arrowPointer.visible = true;
-        // Position arrow in front of player
+        // Position arrow slightly in front of player
         const playerForward = new THREE.Vector3();
         camera.getWorldDirection(playerForward);
-        playerForward.y = 0; // Keep arrow on ground level
-        playerForward.normalize().multiplyScalar(5); // 5 units in front of player
+        playerForward.y = 0;
+        playerForward.normalize().multiplyScalar(5);
 
         arrowPointer.position.copy(camera.position).add(playerForward);
         arrowPointer.position.y = 1 + Math.sin(performance.now() * 0.005) * 0.2; // Floating effect
@@ -599,7 +554,6 @@ function updateArrowPointer() {
     }
 }
 
-// Function to teleport player to the target build zone
 function teleportToBuildZone() {
     const targetZone = findFirstAffordableEmptyZone();
     if (targetZone) {
@@ -653,17 +607,20 @@ function updateBuildZoneButtons() {
         const distanceToPlayer = camera.position.distanceTo(zone.position);
         if (distanceToPlayer < 15 && !isDisabled) {
              buttonDiv.classList.remove('hidden');
-             buttonDiv.style.pointerEvents = 'auto';
+             buttonDiv.style.pointerEvents = 'auto'; // Enable pointer events for click
         } else {
              buttonDiv.classList.add('hidden');
-             buttonDiv.style.pointerEvents = 'none';
+             buttonDiv.style.pointerEvents = 'none'; // Disable pointer events when hidden
         }
     });
 }
 
 async function handleBuildZoneClick(zoneId) {
     const zone = BUILD_ZONES.find(z => z.id === zoneId);
-    if (!zone || zone.button.element.disabled) return;
+    if (!zone || zone.button.element.disabled) {
+        console.log(`Button for ${zoneId} is disabled or zone not found.`);
+        return;
+    }
 
     const cost = zone.currentCost;
 
@@ -677,16 +634,13 @@ async function handleBuildZoneClick(zoneId) {
     updateCollectedMoneyDisplay();
 
     if (zone.status === 'empty') {
-        // We will remove and re-create fences to ensure they are properly aligned with the main cage model.
-        // For Three.js, it's generally cleaner to remove and add rather than complex updates if objects are static.
-        // This is a simplified approach, a more robust system might hide/replace existing fence meshes.
-        // Since initial fences are added to worldOctree, rebuilding it will take care of collisions.
-
         await loadAndPlaceModel(
             zone.cageData.mainCagePath,
             zone.cageData.mainCageScale,
             zone.position
         );
+        // Do NOT re-create fences here. They are already placed as initial fences.
+        // We only place the main cage model and its floor.
         createTexturedPlane(
             zone.cageData.mainCageScale.x * WOOD_FENCE_UNIT_SCALE_MULTIPLIER,
             zone.cageData.mainCageScale.z * WOOD_FENCE_UNIT_SCALE_MULTIPLIER,
@@ -733,17 +687,19 @@ async function handleBuildZoneClick(zoneId) {
 const ZOO_BOUNDS_X = 40;
 const ZOO_BOUNDS_Z = 40;
 
-// --- SPAWN POINT AREA ---
-const SPAWN_AREA_WIDTH = 1; // Hanya 1 tile
-const SPAWN_AREA_DEPTH = 1; // Hanya 1 tile
-const SPAWN_FLOOR_Y = 0;
-const ZOO_MAIN_FLOOR_Y = -0.05;
+// Ukuran 1 "petak" di grid kita
+const TILE_SIZE = 10; 
 
+// --- SPAWN POINT AREA ---
+const SPAWN_AREA_WIDTH = TILE_SIZE; // Hanya 1 tile
+const SPAWN_AREA_DEPTH = TILE_SIZE; // Hanya 1 tile
+const SPAWN_FLOOR_Y = 0; // Lantai spawn di Y=0
+const ZOO_MAIN_FLOOR_Y = -0.05; // Lantai kebun binatang di Y=-0.05
 
 // Lantai spawn point menggunakan sp.jpg
 createTexturedPlane(
     SPAWN_AREA_WIDTH, SPAWN_AREA_DEPTH,
-    '/Floor/sp.jpg', // Menggunakan sp.jpg
+    '/Floor/sp.jpg',
     1, 1, // Repeat 1,1 untuk 1 tile
     new THREE.Vector3(SPAWN_POINT_X, SPAWN_FLOOR_Y, SPAWN_POINT_Z)
 );
@@ -773,95 +729,86 @@ loader.load('/Lever/lever.glb', function (gltf) {
 }, undefined, (error) => { console.error('Error loading Lever model:', error); });
 
 
-// --- ZOO GROUND AND PATHS (outside spawn area) ---
-const ZOO_CENTER_X = 0;
-const ZOO_CENTER_Z = 0;
+// --- ZOO GROUND AND PATHS (menggunakan grid) ---
+// Ukuran total area game
+const GRID_SIZE_X = 11; // Contoh: 11 petak dari -5 hingga 5
+const GRID_SIZE_Z = 11; // Contoh: 11 petak dari -5 hingga 5
+const HALF_GRID_SIZE_X = (GRID_SIZE_X - 1) / 2; // Untuk koordinat -/+
+const HALF_GRID_SIZE_Z = (GRID_SIZE_Z - 1) / 2;
 
-const floorSize = ZOO_BOUNDS_X * 2 + 20;
-const pathWidth = 8;
-
-// Main Grass Area (background layer for the whole zoo, but *exclude* the spawn area)
-// We create 4 grass planes around the spawn area
-const grassWidth = (floorSize - SPAWN_AREA_WIDTH) / 2;
-const grassDepth = (floorSize - SPAWN_AREA_DEPTH) / 2;
-
-// Grass North of Spawn
-createTexturedPlane(
-    floorSize, grassDepth + SPAWN_AREA_DEPTH/2,
-    '/Floor/grass.jpg',
-    floorSize / 5, (grassDepth + SPAWN_AREA_DEPTH/2) / 5,
-    new THREE.Vector3(ZOO_CENTER_X, ZOO_MAIN_FLOOR_Y, SPAWN_POINT_Z + SPAWN_AREA_DEPTH/2 + grassDepth/2)
-);
-// Grass South of Spawn
-createTexturedPlane(
-    floorSize, grassDepth + SPAWN_AREA_DEPTH/2,
-    '/Floor/grass.jpg',
-    floorSize / 5, (grassDepth + SPAWN_AREA_DEPTH/2) / 5,
-    new THREE.Vector3(ZOO_CENTER_X, ZOO_MAIN_FLOOR_Y, SPAWN_POINT_Z - SPAWN_AREA_DEPTH/2 - grassDepth/2)
-);
-// Grass East of Spawn (adjust to fill gaps between N/S grass)
-createTexturedPlane(
-    grassWidth + SPAWN_AREA_WIDTH/2, floorSize,
-    '/Floor/grass.jpg',
-    (grassWidth + SPAWN_AREA_WIDTH/2) / 5, floorSize / 5,
-    new THREE.Vector3(SPAWN_POINT_X + SPAWN_AREA_WIDTH/2 + grassWidth/2, ZOO_MAIN_FLOOR_Y, ZOO_CENTER_Z)
-);
-// Grass West of Spawn (adjust to fill gaps between N/S grass)
-createTexturedPlane(
-    grassWidth + SPAWN_AREA_WIDTH/2, floorSize,
-    '/Floor/grass.jpg',
-    (grassWidth + SPAWN_AREA_WIDTH/2) / 5, floorSize / 5,
-    new THREE.Vector3(SPAWN_POINT_X - SPAWN_AREA_WIDTH/2 - grassWidth/2, ZOO_MAIN_FLOOR_Y, ZOO_CENTER_Z)
-);
-
-
-// Main Paths - now they surround the spawn area and extend into the zoo
-// Path North-South (connecting from just outside spawn area)
-createTexturedPlane(
-    pathWidth, floorSize,
-    '/Floor/road.jpg',
-    1, floorSize / 10,
-    new THREE.Vector3(ZOO_CENTER_X, ZOO_MAIN_FLOOR_Y, ZOO_CENTER_Z)
-);
-// Path East-West (connecting from just outside spawn area)
-createTexturedPlane(
-    floorSize, pathWidth,
-    '/Floor/road.jpg',
-    floorSize / 10, 1,
-    new THREE.Vector3(ZOO_CENTER_X, ZOO_MAIN_FLOOR_Y, ZOO_CENTER_Z)
-);
-
-
-// --- Menempatkan Pohon-pohon di area kebun binatang ---
-function placeRandomTree(treePath, scale) {
-    const maxAttempt = 50;
-    for(let i = 0; i < maxAttempt; i++) {
-        const randomX = (Math.random() * (ZOO_BOUNDS_X * 2 - 20)) - (ZOO_BOUNDS_X - 10);
-        const randomZ = (Math.random() * (ZOO_BOUNDS_Z * 2 - 20)) - (ZOO_BOUNDS_Z - 10);
-        const testPos = new THREE.Vector3(randomX, 0, randomZ);
-
-        const isInMainPathX = (testPos.x > ZOO_CENTER_X - pathWidth/2 && testPos.x < ZOO_CENTER_X + pathWidth/2);
-        const isInMainPathZ = (testPos.z > ZOO_CENTER_Z - pathWidth/2 && testPos.z < ZOO_CENTER_Z + pathWidth/2);
-
-        const isInSpawnArea = (testPos.x > SPAWN_POINT_X - SPAWN_AREA_WIDTH/2 && testPos.x < SPAWN_POINT_X + SPAWN_AREA_WIDTH/2 &&
-                              testPos.z > SPAWN_POINT_Z - SPAWN_AREA_DEPTH/2 && testPos.z < SPAWN_POINT_Z + SPAWN_AREA_DEPTH/2);
-
-        if (!isInSpawnArea && !(isInMainPathX || isInMainPathZ)) {
-            loadAndPlaceModel(treePath, scale, testPos, Math.random() * Math.PI * 2)
-                .catch(e => console.error(`Error loading tree ${treePath}: ${e.message}`));
-            return;
-        }
-    }
-    console.warn(`Could not find a suitable spot for a tree of type ${treePath}.`);
+// Fungsi helper untuk mendapatkan koordinat dunia dari grid index
+function getGridPosition(gridX, gridZ, yOffset = 0) {
+    return new THREE.Vector3(
+        (gridX - HALF_GRID_SIZE_X) * TILE_SIZE,
+        yOffset,
+        (gridZ - HALF_GRID_SIZE_Z) * TILE_SIZE
+    );
 }
 
-for(let i = 0; i < 15; i++) placeRandomTree('/Building/pine_tree.glb', new THREE.Vector3(0.05, 0.05, 0.05));
-for(let i = 0; i < 10; i++) placeRandomTree('/Building/oak_trees.glb', new THREE.Vector3(0.01, 0.01, 0.01));
-for(let i = 0; i < 8; i++) placeRandomTree('/Building/stylized_tree.glb', new THREE.Vector3(0.005, 0.005, 0.005));
+// "Peta" kebun binatang Anda
+const zooMap = [
+    // z = -5 (paling belakang)
+    "T T T T T T T T T T T", // Pohon
+    "T R R R P R R R P R T", // Pohon, Rumput, Jalan, Pohon, Rumput, Jalan, Pohon
+    "T C C C J C C C J C T", // Kandang, Jalan, Kandang, Jalan
+    "T R R R P R R R P R T",
+    "T T T T T T T T T T T",
+    // z = 0 (tengah)
+    "J J J J J S J J J J J", // Jalan, Spawn Point, Jalan
+    "T R R R P R R R P R T",
+    "T C C C J C C C J C T",
+    "T R R R P R R R P R T",
+    "T T T T T T T T T T T" // Pohon
+];
+
+const ITEM_SPACING = TILE_SIZE; // Jarak antar item di grid
+
+// Loop melalui map untuk membuat lantai dan menempatkan pohon
+zooMap.forEach((row, zIndex) => {
+    row.split(' ').forEach((type, xIndex) => {
+        const worldPos = getGridPosition(xIndex, zIndex, ZOO_MAIN_FLOOR_Y);
+        worldPos.y = ZOO_MAIN_FLOOR_Y; // Pastikan Y di level lantai kebun binatang
+
+        let floorTexture = '/Floor/grass.jpg'; // Default rumput
+        let floorRepeatX = TILE_SIZE / 5;
+        let floorRepeatY = TILE_SIZE / 5;
+
+        // Atur tekstur lantai
+        if (type === 'J') { // Jalan
+            floorTexture = '/Floor/road.jpg';
+            floorRepeatX = TILE_SIZE / 10;
+            floorRepeatY = TILE_SIZE / 10;
+        } else if (type === 'S') { // Spawn Point, sudah ditangani terpisah di atas
+            // Jangan buat lantai di sini, sudah ada lantai sp.jpg
+            return;
+        } else if (type === 'C') { // Area kandang, lantai akan dibuat saat beli kandang
+            floorTexture = '/Floor/grass.jpg'; // Default rumput untuk area kandang
+        }
+
+        // Buat lantai untuk petak ini
+        createTexturedPlane(TILE_SIZE, TILE_SIZE, floorTexture, floorRepeatX, floorRepeatY, worldPos);
+
+        // Tempatkan pohon jika itu petak 'T' (Tree)
+        if (type === 'T') {
+            loadAndPlaceModel('/Building/pine_tree.glb', new THREE.Vector3(0.05, 0.05, 0.05), worldPos, Math.random() * Math.PI * 2)
+                .catch(e => console.error(`Error loading tree: ${e.message}`));
+        }
+    });
+});
+
+
+// --- Menentukan Posisi BUILD_ZONES berdasarkan grid ---
+// Anda harus menyesuaikan posisi BUILD_ZONES agar sesuai dengan petak 'C' di zooMap
+BUILD_ZONES[0].position = getGridPosition(2, 2); // Buffalo Cage (C)
+BUILD_ZONES[1].position = getGridPosition(6, 2); // Elephant Cage (C)
+BUILD_ZONES[2].position = getGridPosition(2, 6); // Giraffe Cage (C)
+BUILD_ZONES[3].position = getGridPosition(6, 6); // Lion Cage (C)
+BUILD_ZONES[4].position = getGridPosition(2, 8); // Gorilla Cage (C) (contoh baru)
+BUILD_ZONES[5].position = getGridPosition(6, 8); // Rhino Cage (C) (contoh baru)
 
 
 // --- MAP BOARD ---
-loadAndPlaceModel('/Wall/note_board_-mb.glb', new THREE.Vector3(10, 2, ZOO_BOUNDS_Z - 10), Math.PI / 4)
+loadAndPlaceModel('/Wall/note_board_-mb.glb', new THREE.Vector3(0.1, 0.1, 0.1), getGridPosition(HALF_GRID_SIZE_X + 2, HALF_GRID_SIZE_Z - 3, 2), Math.PI / 4)
     .catch(e => console.error(`Error loading Map Board: ${e.message}`));
 
 
@@ -935,18 +882,18 @@ function animate() {
     animalMixers.forEach(mixer => mixer.update(deltaTime));
 
     checkLeverInteraction();
-    updateBuildZoneButtons();
+    updateBuildZoneButtons(); // Penting: Ini mengupdate tombol dan visibilitasnya
     updateArrowPointer();
 
     TWEEN.update();
     renderer.render(scene, camera);
-    labelRenderer.render(scene, camera);
+    labelRenderer.render(scene, camera); // Penting: render CSS2D elements
 }
 
-playerMoney = 0;
+playerMoney = 0; // Mulai dengan uang 0
 uncollectedMoney = 0;
 updateCollectedMoneyDisplay();
 updateUncollectedMoneyDisplay();
-initializeBuildZones();
+initializeBuildZones(); // Ini juga memuat pagar awal
 
 animate();
