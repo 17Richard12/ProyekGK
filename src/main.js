@@ -11,6 +11,7 @@ const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerH
 camera.rotation.order = 'YXZ';
 
 const container = document.getElementById('container');
+// Pastikan elemen-elemen ini ada di index.html
 const uncollectedMoneyDisplay = document.getElementById('uncollectedMoneyDisplay');
 const collectedMoneyDisplay = document.getElementById('collectedMoneyDisplay');
 const collectButton = document.getElementById('collectButton');
@@ -39,22 +40,23 @@ let uncollectedMoney = 0;
 const purchasedRevenueSources = {}; // Object to store purchased animals and their count for revenue calculation
 
 function updateCollectedMoneyDisplay() {
-    if (collectedMoneyDisplay) {
+    if (collectedMoneyDisplay) { // Periksa keberadaan elemen
         collectedMoneyDisplay.innerText = `💵 ${playerMoney}`;
     }
 }
 
 function updateUncollectedMoneyDisplay() {
-    if (uncollectedMoneyDisplay) {
-        uncollectedMoneyDisplay.innerText = `💰 ${uncollectedMoney}`;
+    if (uncollectedMoneyDisplay) { // Periksa keberadaan elemen
+        uncollectedMoneyDisplay.innerText = `💰 ${Math.floor(uncollectedMoney)}`; // Bulatkan uncollected money
     }
 }
 
 function generateMoneyFromRevenueSources() {
     let totalIncome = 0;
     for (const animalType in purchasedRevenueSources) {
-        const count = purchasedRevenueSources[animalType].count;
-        const baseIncome = purchasedRevenueSources[animalType].baseIncome;
+        const data = purchasedRevenueSources[animalType];
+        const count = data.count;
+        const baseIncome = data.baseIncome;
         // Income increases by 10% for each animal of the same type
         totalIncome += baseIncome * (1 + (count - 1) * 0.1);
     }
@@ -64,7 +66,7 @@ function generateMoneyFromRevenueSources() {
 
 function collectMoney() {
     if (uncollectedMoney > 0) {
-        playerMoney += Math.floor(uncollectedMoney); // Round down collected money
+        playerMoney += Math.floor(uncollectedMoney);
         uncollectedMoney = 0;
         updateCollectedMoneyDisplay();
         updateUncollectedMoneyDisplay();
@@ -73,7 +75,11 @@ function collectMoney() {
     }
 }
 
-collectButton.addEventListener('click', collectMoney);
+// Pastikan tombol collectButton sudah ada sebelum menambahkan event listener
+if (collectButton) {
+    collectButton.addEventListener('click', collectMoney);
+}
+
 
 // PLAYER CONTROLS & PHYSICS =========================================
 const clock = new THREE.Clock();
@@ -82,8 +88,9 @@ const STEPS_PER_FRAME = 2;
 
 const worldOctree = new Octree();
 
-// Initial player spawn point OUTSIDE the zoo
-const playerCollider = new Capsule(new THREE.Vector3(0, 0.8, 50), new THREE.Vector3(0, 1.2, 50), 0.8);
+// Initial player spawn point inside the zoo, near the center path
+// So player can immediately see paths and external fence, and open shop.
+const playerCollider = new Capsule(new THREE.Vector3(0, 0.8, 0), new THREE.Vector3(0, 1.2, 0), 0.8);
 
 const playerVelocity = new THREE.Vector3();
 const playerDirection = new THREE.Vector3();
@@ -116,7 +123,8 @@ document.addEventListener('keyup', (event) => {
 });
 
 container.addEventListener('click', (event) => {
-    if (document.pointerLockElement !== document.body) {
+    // Only request pointer lock if shop is not open
+    if (!isShopOpen && document.pointerLockElement !== document.body) {
         document.body.requestPointerLock();
     }
 });
@@ -178,7 +186,11 @@ function getSideVector() {
 }
 
 function controls(deltaTime) {
-    if (isShopOpen) return;
+    if (isShopOpen) {
+        // Stop player movement when shop is open
+        playerVelocity.set(0, 0, 0);
+        return;
+    }
 
     const speedDelta = deltaTime * (playerOnFloor ? 25 : 8);
 
@@ -206,9 +218,10 @@ function controls(deltaTime) {
 }
 
 function teleportPlayerIfOob() {
+    // If player falls below the world, reset to a safe position inside the zoo
     if (camera.position.y <= -25) {
-        playerCollider.start.set(0, 0.8, 50);
-        playerCollider.end.set(0, 1.2, 50);
+        playerCollider.start.set(0, 0.8, 0); // Reset to center of zoo
+        playerCollider.end.set(0, 1.2, 0);
         playerCollider.radius = 0.8;
         camera.position.copy(playerCollider.end);
         camera.rotation.set(0, 0, 0);
@@ -223,7 +236,11 @@ const animalMixers = [];
 
 function createTexturedPlane(width, depth, texturePath, repeatX, repeatY, position, rotationY = 0) {
     const geometry = new THREE.PlaneGeometry(width, depth);
-    const texture = textureLoader.load(texturePath);
+    const texture = textureLoader.load(texturePath,
+        () => {}, // On load
+        undefined, // On progress
+        (error) => { console.error(`Error loading texture ${texturePath}:`, error); }
+    );
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
     texture.repeat.set(repeatX, repeatY);
@@ -255,7 +272,10 @@ function loadAndPlaceModel(path, scale, position, rotationY = 0) {
             scene.add(model);
             worldOctree.fromGraphNode(model);
             resolve(model);
-        }, undefined, reject);
+        }, undefined, (error) => { // Error callback for GLTF loader
+            console.error(`Error loading GLB model ${path}:`, error);
+            reject(error);
+        });
     });
 }
 
@@ -278,10 +298,11 @@ async function placeAnimalEnclosure(
         if (!purchasedRevenueSources[type]) {
             purchasedRevenueSources[type] = {
                 count: 0,
-                baseIncome: 10 // Base income per animal
+                baseIncome: 10 // Base income per animal per interval
             };
         }
         purchasedRevenueSources[type].count++;
+
 
         let cageFloorTexturePath;
         let repeatFactor = 1;
@@ -301,33 +322,53 @@ async function placeAnimalEnclosure(
         );
 
         // Create wooden fences around the cage
-        const WOOD_FENCE_LENGTH = 10; // Approximate length of your fence_wood.glb model
-        const halfWidth = (mainCageScale.x * WOOD_FENCE_LENGTH) / 2;
-        const halfDepth = (mainCageScale.z * WOOD_FENCE_LENGTH) / 2;
+        const WOOD_FENCE_MODEL_LENGTH = 10; // This is the actual length of your fence_wood.glb model
+        const halfCageWidth = (mainCageScale.x * WOOD_FENCE_MODEL_LENGTH) / 2;
+        const halfCageDepth = (mainCageScale.z * WOOD_FENCE_MODEL_LENGTH) / 2;
 
-        // Using a loop to place multiple fence segments for larger cages
-        // This is a simplified version; exact placement might need more fine-tuning
+        const fenceOffset = 0.5; // Small offset to prevent z-fighting with the main cage model
+
+        // Helper to place single fence segment and handle collision
         const placeFenceSegment = async (x, z, rotationY) => {
-            await loadAndPlaceModel('/Wall/fence_wood.glb', woodFenceScale, new THREE.Vector3(x, 0, z), rotationY);
+            const fence = await loadAndPlaceModel('/Wall/fence_wood.glb', woodFenceScale, new THREE.Vector3(x, 0, z), rotationY);
+            // Optionally, update collision for individual fences
+            // For simplicity, worldOctree.fromGraphNode(scene) will update all at once
         };
+        
+        // Calculate the number of segments needed
+        const numSegmentsX = Math.ceil(halfCageWidth * 2 / WOOD_FENCE_MODEL_LENGTH);
+        const numSegmentsZ = Math.ceil(halfCageDepth * 2 / WOOD_FENCE_MODEL_LENGTH);
 
-        // North side
-        for (let x = mainCagePos.x - halfWidth; x <= mainCagePos.x + halfWidth; x += (woodFenceScale.x * WOOD_FENCE_LENGTH) / 2) {
-            await placeFenceSegment(x, mainCagePos.z + halfDepth, 0);
+        // North side (along Z positive)
+        for (let i = 0; i < numSegmentsX; i++) {
+            const xPos = mainCagePos.x - halfCageWidth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
+            await placeFenceSegment(xPos, mainCagePos.z + halfCageDepth + fenceOffset, 0);
         }
-        // South side
-        for (let x = mainCagePos.x - halfWidth; x <= mainCagePos.x + halfWidth; x += (woodFenceScale.x * WOOD_FENCE_LENGTH) / 2) {
-            await placeFenceSegment(x, mainCagePos.z - halfDepth, 0);
+        // South side (along Z negative)
+        for (let i = 0; i < numSegmentsX; i++) {
+            const xPos = mainCagePos.x - halfCageWidth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
+            await placeFenceSegment(xPos, mainCagePos.z - halfCageDepth - fenceOffset, 0);
         }
-        // East side
-        for (let z = mainCagePos.z - halfDepth; z <= mainCagePos.z + halfDepth; z += (woodFenceScale.z * WOOD_FENCE_LENGTH) / 2) {
-            await placeFenceSegment(mainCagePos.x + halfWidth, z, Math.PI / 2);
+        // East side (along X positive)
+        for (let i = 0; i < numSegmentsZ; i++) {
+            const zPos = mainCagePos.z - halfCageDepth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
+            await placeFenceSegment(mainCagePos.x + halfCageWidth + fenceOffset, zPos, Math.PI / 2);
         }
-        // West side
-        for (let z = mainCagePos.z - halfDepth; z <= mainCagePos.z + halfDepth; z += (woodFenceScale.z * WOOD_FENCE_LENGTH) / 2) {
-            await placeFenceSegment(mainCagePos.x - halfWidth, z, -Math.PI / 2);
+        // West side (along X negative)
+        for (let i = 0; i < numSegmentsZ; i++) {
+            const zPos = mainCagePos.z - halfCageDepth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
+            await placeFenceSegment(mainCagePos.x - halfCageWidth - fenceOffset, zPos, -Math.PI / 2);
         }
 
+        // If animal has animations
+        if (animal.animations && animal.animations.length > 0) {
+            const mixer = new THREE.AnimationMixer(animal);
+            const action = mixer.clipAction(animal.animations[0]);
+            action.play();
+            animalMixers.push(mixer);
+        }
+
+        // Rebuild octree after adding new objects
         worldOctree.fromGraphNode(scene);
         console.log(`${type} enclosure placed!`);
 
@@ -338,14 +379,12 @@ async function placeAnimalEnclosure(
 
 
 // TYCOON SHOP DEFINITION =============================================
-// All prices start at baseCost. They double after the first purchase.
-// nextPosition and purchasedCount are tracked per item definition.
 const SHOP_ITEMS = [
     {
         id: 'buffalo_enclosure',
         name: 'Buffalo Enclosure',
         baseCost: 200,
-        currentCost: 200,
+        currentCost: 200, // Dynamic current cost
         purchasedCount: 0,
         type: 'animal_enclosure',
         placement: {
@@ -428,21 +467,28 @@ const SHOP_ITEMS = [
             path: '/Building/pine_tree.glb',
             scale: new THREE.Vector3(0.05, 0.05, 0.05),
         },
-        nextPosition: new THREE.Vector3(0, 0, 0), // Will be randomized slightly
-        positionOffset: new THREE.Vector3(0, 0, 0), // No fixed offset, use random
+        // For decorations, nextPosition is just a conceptual starting point, actual placement is randomized
+        nextPosition: new THREE.Vector3(0, 0, 0),
+        positionOffset: new THREE.Vector3(0, 0, 0),
         maxItems: 20
     }
-    // Tambahkan hewan lain di sini jika diperlukan
+    // Tambahkan hewan lain di sini jika diperlukan, dengan baseCost dan currentCost
 ];
 
 function generateShopItems() {
-    shopItemsContainer.innerHTML = '';
+    // Pastikan shopItemsContainer ada
+    if (!shopItemsContainer) {
+        console.error("Shop items container not found!");
+        return;
+    }
+    shopItemsContainer.innerHTML = ''; // Clear previous items
     SHOP_ITEMS.forEach(item => {
         const displayCost = item.purchasedCount === 0 ? item.baseCost : item.currentCost;
         const disabled = playerMoney < displayCost || (item.maxItems && item.purchasedCount >= item.maxItems);
 
         const itemElement = document.createElement('div');
         itemElement.classList.add('shop-item');
+        
         itemElement.innerHTML = `
             <span>${item.name} (Cost: 💵${displayCost}) (Owned: ${item.purchasedCount}${item.maxItems ? `/${item.maxItems}` : ''})</span>
             <button id="buy-${item.id}" ${disabled ? 'disabled' : ''}>Buy</button>
@@ -450,9 +496,11 @@ function generateShopItems() {
         shopItemsContainer.appendChild(itemElement);
 
         const buyButton = itemElement.querySelector(`#buy-${item.id}`);
-        buyButton.addEventListener('click', () => buyItem(item.id));
+        if (buyButton) { // Pastikan tombol ada sebelum menambahkan event listener
+            buyButton.addEventListener('click', () => buyItem(item.id));
+        }
     });
-    updateShopButtons();
+    updateShopButtons(); // Initial update
 }
 
 function updateShopButtons() {
@@ -492,7 +540,7 @@ async function buyItem(itemId) {
     item.purchasedCount++; // Increment purchased count
 
     // Update current cost for next purchase
-    item.currentCost = item.baseCost * (2 ** (item.purchasedCount - 1)); // Double price each time
+    item.currentCost = item.baseCost * (2 ** (item.purchasedCount)); // Double price for EACH purchase after base (so base * 2^0, base * 2^1, etc)
 
     updateCollectedMoneyDisplay();
     updateShopButtons();
@@ -501,15 +549,15 @@ async function buyItem(itemId) {
 
     // Place the item in the world
     if (item.type === 'animal_enclosure') {
-        const actualPosition = item.nextPosition.clone(); // Use the stored nextPosition
+        const actualPosition = item.nextPosition.clone();
         await placeAnimalEnclosure(
             item.id, // type for income tracking
             item.placement.animalPath,
             item.placement.mainCagePath,
             item.placement.animalScale,
             item.placement.mainCageScale,
-            actualPosition, // Animal position
-            actualPosition, // Main cage position
+            actualPosition,
+            actualPosition,
             item.placement.floorType,
             item.placement.woodFenceScale
         );
@@ -517,7 +565,6 @@ async function buyItem(itemId) {
         item.nextPosition.add(item.positionOffset);
 
     } else if (item.type === 'decoration') {
-        // For decorations like trees, randomize position around a general area
         const randomX = (Math.random() * (ZOO_BOUNDS_X * 2 - 20)) - (ZOO_BOUNDS_X - 10);
         const randomZ = (Math.random() * (ZOO_BOUNDS_Z * 2 - 20)) - (ZOO_BOUNDS_Z - 10);
         const randomPosition = new THREE.Vector3(randomX, 0, randomZ);
@@ -539,6 +586,8 @@ function toggleShop() {
         document.exitPointerLock();
     } else {
         shopPanel.style.display = 'none';
+        // When closing shop, player might want to resume movement
+        // We'll let the user click on the canvas to re-engage pointer lock
     }
 }
 
@@ -548,34 +597,37 @@ const ZOO_BOUNDS_Z = 40;
 const FENCE_SEGMENT_LENGTH = 10;
 const brickFenceScale = new THREE.Vector3(10, 10, 10);
 
-// --- EXTERNAL ZOO FENCE AND GATE ---
-// These are loaded immediately at startup
+// --- EXTERNAL ZOO FENCE AND GATE (Loaded at startup) ---
 // North Fence (along Z positive)
 for (let x = -ZOO_BOUNDS_X + FENCE_SEGMENT_LENGTH / 2; x < ZOO_BOUNDS_X; x += FENCE_SEGMENT_LENGTH) {
-    if (x > -5 && x < 5) continue;
-    loadAndPlaceModel('/Wall/simple_bricks_and_steel_fence.glb', brickFenceScale, new THREE.Vector3(x, 0, ZOO_BOUNDS_Z));
+    if (x > -5 && x < 5) continue; // Skip area for gate
+    loadAndPlaceModel('/Wall/simple_bricks_and_steel_fence.glb', brickFenceScale, new THREE.Vector3(x, 0, ZOO_BOUNDS_Z))
+        .catch(e => console.error(`Error loading North Fence: ${e.message}`));
 }
 // South Fence
-for (let x = -ZOO_BOUNDS_X + FENCE_SEGMENT_LENGTH / 2; x < ZOO_BOUNDS_X; x += FENCE_SEGMENT_LENGTH) {
-    loadAndPlaceModel('/Wall/simple_bricks_and_steel_fence.glb', brickFenceScale, new THREE.Vector3(x, 0, -ZOO_BOUNDS_Z));
+for (let x = -ZOO_BOUNDs_X + FENCE_SEGMENT_LENGTH / 2; x < ZOO_BOUNDS_X; x += FENCE_SEGMENT_LENGTH) {
+    loadAndPlaceModel('/Wall/simple_bricks_and_steel_fence.glb', brickFenceScale, new THREE.Vector3(x, 0, -ZOO_BOUNDS_Z))
+        .catch(e => console.error(`Error loading South Fence: ${e.message}`));
 }
 // East Fence
 for (let z = -ZOO_BOUNDS_Z + FENCE_SEGMENT_LENGTH / 2; z < ZOO_BOUNDS_Z; z += FENCE_SEGMENT_LENGTH) {
-    loadAndPlaceModel('/Wall/simple_bricks_and_steel_fence.glb', brickFenceScale, new THREE.Vector3(ZOO_BOUNDS_X, 0, z), Math.PI / 2);
+    loadAndPlaceModel('/Wall/simple_bricks_and_steel_fence.glb', brickFenceScale, new THREE.Vector3(ZOO_BOUNDS_X, 0, z), Math.PI / 2)
+        .catch(e => console.error(`Error loading East Fence: ${e.message}`));
 }
 // West Fence
 for (let z = -ZOO_BOUNDS_Z + FENCE_SEGMENT_LENGTH / 2; z < ZOO_BOUNDS_Z; z += FENCE_SEGMENT_LENGTH) {
-    loadAndPlaceModel('/Wall/simple_bricks_and_steel_fence.glb', brickFenceScale, new THREE.Vector3(-ZOO_BOUNDS_X, 0, z), -Math.PI / 2);
+    loadAndPlaceModel('/Wall/simple_bricks_and_steel_fence.glb', brickFenceScale, new THREE.Vector3(-ZOO_BOUNDS_X, 0, z), -Math.PI / 2)
+        .catch(e => console.error(`Error loading West Fence: ${e.message}`));
 }
 
 // Main Gate
 loader.load('/Wall/gate.glb', function (gltf) {
     zooGate = gltf.scene;
-    zooGate.scale.set(5, 5, 5);
-    zooGate.position.set(0, 0, ZOO_BOUNDS_Z);
+    zooGate.scale.set(5, 5, 5); // Adjust gate scale
+    zooGate.position.set(0, 0, ZOO_BOUNDS_Z); // Position at the center of the north fence
     scene.add(zooGate);
     worldOctree.fromGraphNode(zooGate);
-});
+}, undefined, (error) => { console.error('Error loading Gate model:', error); });
 
 function toggleGate() {
     isGateAnimating = true;
@@ -591,13 +643,13 @@ function toggleGate() {
         .onComplete(() => {
             isGateOpen = !isGateOpen;
             isGateAnimating = false;
-            worldOctree.fromGraphNode(scene);
+            worldOctree.fromGraphNode(scene); // Rebuild the entire octree
         })
         .start();
 }
 
 
-// --- ZOO GROUND AND PATHS ---
+// --- ZOO GROUND AND PATHS (Loaded at startup) ---
 const floorSize = ZOO_BOUNDS_X * 2 + 20;
 const pathWidth = 8;
 
@@ -633,15 +685,16 @@ createTexturedPlane(
     new THREE.Vector3(0, 0, 0)
 );
 
-// --- MAP BOARD ---
-loadMapBoard(new THREE.Vector3(10, 2, ZOO_BOUNDS_Z - 10), Math.PI / 4, new THREE.Vector3(0.1, 0.1, 0.1));
+// --- MAP BOARD (Loaded at startup) ---
+loadMapBoard(new THREE.Vector3(10, 2, ZOO_BOUNDS_Z - 10), Math.PI / 4, new THREE.Vector3(0.1, 0.1, 0.1))
+    .catch(e => console.error(`Error loading Map Board: ${e.message}`));
 
 
-// BACKGROUND
+// BACKGROUND (Loaded at startup)
 const backgroundGeometry = new THREE.SphereGeometry(500, 32, 32);
 const backgroundTexture = textureLoader.load('/Background/langit.jpg', (texture) => {
     texture.encoding = THREE.sRGBEncoding;
-});
+}, undefined, (error) => { console.error('Error loading background texture:', error); });
 const backgroundMaterial = new THREE.MeshBasicMaterial({
     map: backgroundTexture,
     side: THREE.BackSide
@@ -688,8 +741,8 @@ function animate() {
     renderer.render(scene, camera);
 }
 
-// Initial calls for money system and shop
-playerMoney = 100; // Starting money
+// Initial setup for the tycoon game
+playerMoney = 500; // Starting money, adjust as needed
 updateCollectedMoneyDisplay();
 updateUncollectedMoneyDisplay();
 setInterval(generateMoneyFromRevenueSources, 1000); // Generate income every second

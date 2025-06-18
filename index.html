@@ -4,26 +4,21 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zoo Tycoon</title> </head>
+    <title>Zoo Tycoon</title>
+</head>
 <style>
-    body { margin: 0; overflow: hidden; font-family: 'Arial', sans-serif; } /* Added font */
+    body {
+        margin: 0;
+        overflow: hidden;
+        font-family: 'Arial', sans-serif;
+        /* Tambahkan ini jika Anda ingin memastikan body mengambil tinggi penuh viewport */
+        height: 100vh;
+        width: 100vw;
+    }
     #container {
         position: relative;
         width: 100%;
         height: 100vh;
-    }
-    #leverMessage { /* Kept but not actively used in this tycoon logic */
-        display: none;
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        color: white;
-        font-size: 24px;
-        background: rgba(0, 0, 0, 0.5);
-        padding: 10px;
-        border-radius: 5px;
-        pointer-events: none;
     }
     #moneyContainer {
         position: absolute;
@@ -32,23 +27,22 @@
         z-index: 100;
         display: flex;
         align-items: center;
-        background-color: rgba(0, 0, 0, 0.6); /* Slightly darker for better contrast */
+        background-color: rgba(0, 0, 0, 0.6);
         color: white;
         padding: 10px 20px;
         border-radius: 12px;
-        font-size: 20px; /* Slightly smaller */
+        font-size: 20px;
         font-weight: bold;
         border: 2px solid rgba(255, 255, 255, 0.7);
-        gap: 15px; /* Spacing between money displays */
+        gap: 15px;
     }
-    /* Style for the collect button (new UI element) */
     #collectButton {
         position: absolute;
         bottom: 20px;
         left: 50%;
         transform: translateX(-50%);
         z-index: 100;
-        background-color: #4CAF50; /* Green */
+        background-color: #4CAF50;
         color: white;
         padding: 15px 30px;
         border: none;
@@ -63,7 +57,6 @@
         background-color: #45a049;
     }
 
-    /* Basic shop UI placeholder - can be expanded later */
     #shopPanel {
         position: absolute;
         top: 50%;
@@ -77,13 +70,13 @@
         padding: 20px;
         border-radius: 10px;
         box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-        display: none; /* Hidden by default */
-        z-index: 101; /* Above other UI */
+        display: none;
+        z-index: 101;
     }
     #shopPanel h2 {
         text-align: center;
         margin-top: 0;
-        color: #FFD700; /* Gold color for title */
+        color: #FFD700;
     }
     .shop-item {
         display: flex;
@@ -96,7 +89,7 @@
         border-bottom: none;
     }
     .shop-item button {
-        background-color: #007bff; /* Blue */
+        background-color: #007bff;
         color: white;
         padding: 8px 15px;
         border: none;
@@ -114,7 +107,7 @@
 </style>
 <body>
     <div id="container"></div>
-    <div id="leverMessage" style="display: none;"></div> <div id="moneyContainer">
+    <div id="moneyContainer">
         <span id="uncollectedMoneyDisplay">💰 0</span>
         <span id="collectedMoneyDisplay">💵 0</span>
     </div>
