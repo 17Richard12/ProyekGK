@@ -4,72 +4,32 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>Zoo Environment</title>
 </head>
 <style>
-    #blocker {
-        position: absolute;
+    body { margin: 0; overflow: hidden; } /* Ensure no scrollbars */
+    #container {
+        position: relative; /* Make sure it's positioned for renderer.domElement */
         width: 100%;
-        height: 100%;
-        background-color: rgba(0,0,0,0.5);
+        height: 100vh; /* Use 100vh to ensure it fills the viewport height */
     }
-
-    #instructions {
-        width: 100%;
-        height: 100%;
-
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-
-        text-align: center;
-        font-size: 14px;
-        cursor: pointer;
-    }
-
-    #moneyContainer {
+    #leverMessage { /* Kept for potential future use or debugging */
+        display: none;
         position: absolute;
-        top: 20px;
-        right: 20px;
-        z-index: 100;
-        
-        display: flex; /* Mengatur elemen di dalam agar sejajar */
-        align-items: center; /* Menyelaraskan item secara vertikal */
-
-        background-color: rgba(0, 0, 0, 0.5);
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
         color: white;
-        padding: 10px 20px;
-        border-radius: 12px;
-        font-family: 'Arial', sans-serif;
         font-size: 24px;
-        font-weight: bold;
-        border: 2px solid rgba(255, 255, 255, 0.7);
-    }
-
-    /* Style untuk span di dalam container */
-    #moneyContainer span {
-        margin: 0 10px; /* Memberi sedikit spasi antar elemen uang */
-    }
-
-    /* Style untuk pemisah visual (opsional, tapi terlihat bagus) */
-    #collectedMoneyDisplay {
-        border-left: 2px solid rgba(255, 255, 255, 0.5);
-        padding-left: 20px;
+        background: rgba(0, 0, 0, 0.5);
+        padding: 10px;
+        border-radius: 5px;
+        pointer-events: none; /* Allows clicks to pass through to the canvas */
     }
 </style>
-<body style="margin: 0;">
-    <!-- <div id="blocker">
-        <div id="instructions">
-            <h1 style="color: white">Click to Start</h1>
-        </div>
-    </div> -->
+<body>
     <div id="container"></div>
-    <div id="leverMessage" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 24px; background: rgba(0, 0, 0, 0.5); padding: 10px; border-radius: 5px;">Press F to open</div>
-   <div id="moneyContainer">
-        <span id="uncollectedMoneyDisplay">💰 0</span>
-        <span id="collectedMoneyDisplay">💵 0</span>
-    </div>
+    <div id="leverMessage">Press F to open</div>
     <script type="module" src="./src/main.js"></script>
 </body>
 </html>

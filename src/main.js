@@ -11,8 +11,6 @@ const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerH
 camera.rotation.order = 'YXZ';
 
 const container = document.getElementById('container');
-const uncollectedMoneyDisplay = document.getElementById('uncollectedMoneyDisplay');
-const collectedMoneyDisplay = document.getElementById('collectedMoneyDisplay');
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
@@ -30,88 +28,34 @@ function onWindowResize() {
     renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-function updateCollectedMoneyDisplay() {
-    if (collectedMoneyDisplay) {
-        collectedMoneyDisplay.innerText = `💵 ${playerMoney}`;
-    }
-}
-
-function updateUncollectedMoneyDisplay() {
-    if (uncollectedMoneyDisplay) {
-        uncollectedMoneyDisplay.innerText = `💰 ${uncollectedMoney}`;
-    }
-}
-
-function generateMoney() {
-    uncollectedMoney += 10;
-    updateUncollectedMoneyDisplay(); // Perbarui tampilan uncollected money
-}
-
-function collectMoney() {
-    if (uncollectedMoney > 0) {
-        playerMoney += uncollectedMoney; // Pindahkan uang
-        uncollectedMoney = 0; // Reset uang yang belum terkumpul
-
-        // Perbarui kedua tampilan
-        updateCollectedMoneyDisplay();
-        updateUncollectedMoneyDisplay();
-    }
-}
-
-document.addEventListener('keydown', (event) => {
-    keyStates[event.code] = true;
-
-    if (event.code === 'KeyE' && !isWeaponSwitching) {
-        toggleWeapon();
-    }
-
-    // --- TAMBAHKAN KONDISI BARU DI BAWAH INI ---
-    if (event.code === 'KeyC') {
-        collectMoney();
-    }
-});
-
 const clock = new THREE.Clock();
 const GRAVITY = 30;
 const STEPS_PER_FRAME = 2;
 
 const worldOctree = new Octree();
-let playerMoney = 0; 
-let uncollectedMoney = 0;
 
-const playerCollider = new Capsule(new THREE.Vector3(-9, 0.8, 5), new THREE.Vector3(-9, 1.2, 5), 0.8);
+// Initial player spawn point OUTSIDE the zoo
+// Let's assume the main gate is at (0, 0, 40)
+const playerCollider = new Capsule(new THREE.Vector3(0, 0.8, 50), new THREE.Vector3(0, 1.2, 50), 0.8);
 
 const playerVelocity = new THREE.Vector3();
 const playerDirection = new THREE.Vector3();
 
 let playerOnFloor = false;
 const keyStates = {};
-let mouseTime = 0;
-let isCollidingWithDoor = false;
 
-let knife;
+// Gate variables
+let zooGate;
+let isGateOpen = false;
+let isGateAnimating = false;
 
-const loader = new GLTFLoader();
-loader.load('/Knife/karambit.glb', (gltf) => {
-    knife = gltf.scene;
-    knife.scale.set(0.1, 0.1, 0.1);
-    knife.position.set(0.5, -0.5, -1);
-    knife.rotation.set(4.5, Math.PI, -21);
+document.addEventListener('keydown', (event) => {
+    keyStates[event.code] = true;
 
-    knife.userData.initialPosition = knife.position.clone();
-    knife.userData.initialRotation = knife.rotation.clone();
-
-    knife.traverse((node) => {
-        if (node.isMesh) {
-            node.renderOrder = 9999;
-            node.material.depthTest = false;
-        }
-    });
-
-    camera.add(knife);
-    scene.add(camera);
-}, undefined, (error) => {
-    console.error('Error loading knife:', error);
+    // Toggle gate with 'P' key
+    if (event.code === 'KeyP' && zooGate && !isGateAnimating) {
+        toggleGate();
+    }
 });
 
 document.addEventListener('keyup', (event) => {
@@ -123,23 +67,6 @@ container.addEventListener('click', (event) => {
         document.body.requestPointerLock();
     }
 });
-
-document.addEventListener('pointerlockchange', () => {
-    if (document.pointerLockElement === document.body) {
-        document.addEventListener('mousedown', onDocumentMouseDown);
-    } else {
-        document.removeEventListener('mousedown', onDocumentMouseDown);
-    }
-});
-
-function onDocumentMouseDown(event) {
-    // Memeriksa jika tombol kiri mouse yang ditekan
-    if (event.button === 0) {
-        // Karena hanya ada pisau, langsung panggil animasi putaran
-        mouseTime = performance.now();
-        startSpin();
-    }
-}
 
 document.body.addEventListener('mousemove', (event) => {
     if (document.pointerLockElement === document.body) {
@@ -160,12 +87,7 @@ function playerCollisions() {
             playerVelocity.addScaledVector(result.normal, -result.normal.dot(playerVelocity));
         }
 
-        // Check if player is colliding with the door
-        if (doorBoundingBox && doorBoundingBox.containsPoint(playerCollider.start)) {
-            playerVelocity.set(0, 0, 0);
-        } else {
-            playerCollider.translate(result.normal.multiplyScalar(result.depth));
-        }
+        playerCollider.translate(result.normal.multiplyScalar(result.depth));
     }
 }
 
@@ -185,8 +107,7 @@ function updatePlayer(deltaTime) {
     playerCollisions();
 
     camera.position.copy(playerCollider.end);
-    camera.position.y += 0.6;
-    
+    camera.position.y += 0.6; // Adjust camera height for player view
 }
 
 function getForwardVector() {
@@ -203,9 +124,8 @@ function getSideVector() {
     playerDirection.cross(camera.up);
     return playerDirection;
 }
-function controls(deltaTime) {
-    if (isCollidingWithDoor) return;
 
+function controls(deltaTime) {
     const speedDelta = deltaTime * (playerOnFloor ? 25 : 8);
 
     if (keyStates['KeyW']) {
@@ -233,324 +153,429 @@ function controls(deltaTime) {
 
 function teleportPlayerIfOob() {
     if (camera.position.y <= -25) {
-        playerCollider.start.set(-9, 0.8, 5);
-        playerCollider.end.set(-9, 1.2, 5);
+        playerCollider.start.set(0, 0.8, 50); // Reset to original outside spawn point
+        playerCollider.end.set(0, 1.2, 50);
         playerCollider.radius = 0.8;
         camera.position.copy(playerCollider.end);
         camera.rotation.set(0, 0, 0);
     }
 }
 
-let longwall1, longwall2, longwall3, longwall4, longwall5, longwall6, longwall7, longwall8, lever
-let mixer_chamber;
-let mixer_wallgun1, mixer_wallgun2, mixer_wallgun3, mixer_wallgun4;
-let doorBoundingBox;
+const loader = new GLTFLoader();
+const textureLoader = new THREE.TextureLoader();
+const animalMixers = []; // Array to store mixers if animals have animations
 
-// longwall1 =========================
-loader.load( '/Wall/longwall.glb', function ( gltf ) {
-    longwall1 = gltf.scene;
-    longwall1.scale.set(2, 2, 2);
-    longwall1.rotation.set(0, 0, 0);
-    longwall1.position.set(-10, 0, -24.7);
-	scene.add( longwall1 );
-    worldOctree.fromGraphNode( longwall1 )
-});
-loader.load( '/Wall/longwall.glb', function ( gltf ) {
-    longwall1 = gltf.scene;
-    longwall1.scale.set(2, 2, 2);
-    longwall1.rotation.set(0, 0, 0);
-    longwall1.position.set(-10, 3.5, -24.7);
-	scene.add( longwall1 );
-    worldOctree.fromGraphNode( longwall1 )
-});
+// ====================================================================
+// ZOO ASSET LOADING
+// ====================================================================
 
-//longwall2 =========================
-loader.load( '/Wall/longwall.glb', function ( gltf ) {
-    longwall2 = gltf.scene;
-    longwall2.scale.set(2, 2, 2);
-    longwall2.rotation.set(0, 90 * (Math.PI / 180), 0);
-    longwall2.position.set(-24.5, 0, -6);
-	scene.add( longwall2 );
-    worldOctree.fromGraphNode( longwall2 )
-});
-loader.load( '/Wall/longwall.glb', function ( gltf ) {
-    longwall2 = gltf.scene;
-    longwall2.scale.set(2, 2, 2);
-    longwall2.rotation.set(0, 90 * (Math.PI / 180), 0);
-    longwall2.position.set(-24.5, 3.5, -6);
-	scene.add( longwall2 );
-    worldOctree.fromGraphNode( longwall2 )
-});
-
-//longwall3 =========================
-loader.load( '/Wall/longwall.glb', function ( gltf ) {
-    longwall3 = gltf.scene;
-    longwall3.scale.set(2, 2, 2);
-    longwall3.rotation.set(0, 90 * (Math.PI / 180), 0);
-    longwall3.position.set(-24.3, 0, 6.3);
-	scene.add( longwall3 );
-    worldOctree.fromGraphNode( longwall3 )
-});
-loader.load( '/Wall/longwall.glb', function ( gltf ) {
-    longwall3 = gltf.scene;
-    longwall3.scale.set(2, 2, 2);
-    longwall3.rotation.set(0, 90 * (Math.PI / 180), 0);
-    longwall3.position.set(-24.3, 3.5, 6.3);
-	scene.add( longwall3 );
-    worldOctree.fromGraphNode( longwall3 )
-});
-
-//longwall4 =========================
-loader.load( '/Wall/longwall.glb', function ( gltf ) {
-    longwall4 = gltf.scene;
-    longwall4.scale.set(2, 2, 2);
-    longwall4.rotation.set(0, -1 * (Math.PI / 180), 0);
-    longwall4.position.set(-10, 0, 25);
-	scene.add( longwall4 );
-    worldOctree.fromGraphNode( longwall4 )
-});
-loader.load( '/Wall/longwall.glb', function ( gltf ) {
-    longwall4 = gltf.scene;
-    longwall4.scale.set(2, 2, 2);
-    longwall4.rotation.set(0, -1 * (Math.PI / 180), 0);
-    longwall4.position.set(-10, 3.5, 25);
-	scene.add( longwall4 );
-    worldOctree.fromGraphNode( longwall4 )
-});
-
-//longwall5 =========================
-loader.load( '/Wall/longwall.glb', function ( gltf ) {
-    longwall5 = gltf.scene;
-    longwall5.scale.set(2, 2, 2);
-    longwall5.rotation.set(0, 90 * (Math.PI / 180), 0);
-    longwall5.position.set(24.5, 0, -6);
-    // longwall5.traverse((node) => {
-    //     if (node.isMesh) {
-    //       node.castShadow = true;
-    //       node.receiveShadow = true;
-    //     }
-    // });
-
-	scene.add( longwall5 );
-    worldOctree.fromGraphNode( longwall5 )
-});
-loader.load( '/Wall/longwall.glb', function ( gltf ) {
-    longwall5 = gltf.scene;
-    longwall5.scale.set(2, 2, 2);
-    longwall5.rotation.set(0, 90 * (Math.PI / 180), 0);
-    longwall5.position.set(24.5, 3.5, -6);
-    // longwall5.traverse((node) => {
-    //     if (node.isMesh) {
-    //       node.castShadow = true;
-    //       node.receiveShadow = true;
-    //     }
-    // });
-
-	scene.add( longwall5 );
-    worldOctree.fromGraphNode( longwall5 )
-});
-
-//longwall6 =========================
-loader.load( '/Wall/longwall.glb', function ( gltf ) {
-    longwall6 = gltf.scene;
-    longwall6.scale.set(2, 2, 2);
-    longwall6.rotation.set(0, 90 * (Math.PI / 180), 0);
-    longwall6.position.set(24.7, 0, 6.3);
-    // longwall6.traverse((node) => {
-    //     if (node.isMesh) {
-    //       node.castShadow = true;
-    //       node.receiveShadow = true;
-    //     }
-    // });
-
-	scene.add( longwall6 );
-    worldOctree.fromGraphNode( longwall6 )
-});
-loader.load( '/Wall/longwall.glb', function ( gltf ) {
-    longwall6 = gltf.scene;
-    longwall6.scale.set(2, 2, 2);
-    longwall6.rotation.set(0, 90 * (Math.PI / 180), 0);
-    longwall6.position.set(24.7, 3.5, 6.3);
-    // longwall6.traverse((node) => {
-    //     if (node.isMesh) {
-    //       node.castShadow = true;
-    //       node.receiveShadow = true;
-    //     }
-    // });
-
-	scene.add( longwall6 );
-    worldOctree.fromGraphNode( longwall6 )
-});
-
-// longwall7 =========================
-loader.load( '/Wall/longwall.glb', function ( gltf ) {
-    longwall7 = gltf.scene;
-    longwall7.scale.set(2, 2, 2);
-    longwall7.rotation.set(0, 0, 0);
-    longwall7.position.set(8, 0, -24.7);
-    // longwall7.traverse((node) => {
-    //     if (node.isMesh) {
-    //       node.castShadow = true;
-    //       node.receiveShadow = true;
-    //     }
-    // });
-
-	scene.add( longwall7 );
-    worldOctree.fromGraphNode( longwall7 )
-});
-loader.load( '/Wall/longwall.glb', function ( gltf ) {
-    longwall7 = gltf.scene;
-    longwall7.scale.set(2, 2, 2);
-    longwall7.rotation.set(0, 0, 0);
-    longwall7.position.set(8, 3.5, -24.7);
-    // longwall7.traverse((node) => {
-    //     if (node.isMesh) {
-    //       node.castShadow = true;
-    //       node.receiveShadow = true;
-    //     }
-    // });
-
-	scene.add( longwall7 );
-    worldOctree.fromGraphNode( longwall7 )
-});
-
-//longwall8 =========================
-loader.load( '/Wall/longwall.glb', function ( gltf ) {
-    longwall8 = gltf.scene;
-    longwall8.scale.set(2, 2, 2);
-    longwall8.rotation.set(0, -1 * (Math.PI / 180), 0);
-    longwall8.position.set(8, 0, 25);
-    // longwall8.traverse((node) => {
-    //     if (node.isMesh) {
-    //       node.castShadow = true;
-    //       node.receiveShadow = true;
-    //     }
-    // });
-
-	scene.add( longwall8 );
-    worldOctree.fromGraphNode( longwall8 )
-});
-loader.load( '/Wall/longwall.glb', function ( gltf ) {
-    longwall8 = gltf.scene;
-    longwall8.scale.set(2, 2, 2);
-    longwall8.rotation.set(0, -1 * (Math.PI / 180), 0);
-    longwall8.position.set(8, 3.5, 25);
-    // longwall8.traverse((node) => {
-    //     if (node.isMesh) {
-    //       node.castShadow = true;
-    //       node.receiveShadow = true;
-    //     }
-    // });
-
-	scene.add( longwall8 );
-    worldOctree.fromGraphNode( longwall8 )
-});
-
-const raycaster = new THREE.Raycaster();
-const rayDirection = new THREE.Vector3();
-
-function checkCollisionWithDoorRaycasting() {
-    const playerPosition = new THREE.Vector3();
-    playerCollider.getCenter(playerPosition);
-
-    // Set the direction of the ray to the camera's direction
-    camera.getWorldDirection(rayDirection);
-
-    // Set the origin and direction of the ray
-    raycaster.set(playerPosition, rayDirection);
-
-    // Check for intersections with the door
-    const intersects = raycaster.intersectObject(rotatingdoor, true);
-
-    if (intersects.length > 0) {
-        const intersection = intersects[0];
-        const distance = intersection.distance;
-        const collisionThreshold = 1.0; // Adjust the threshold as needed
-
-        if (distance < collisionThreshold) {
-            // Collision detected
-            isCollidingWithDoor = true;
-            playerVelocity.set(0, 0, 0);
-        } else {
-            isCollidingWithDoor = false;
-        }
-    } else {
-        isCollidingWithDoor = false;
-    }
+// Function to create a textured plane for floors
+function createTexturedPlane(width, depth, texturePath, repeatX, repeatY, position, rotationY = 0) {
+    const geometry = new THREE.PlaneGeometry(width, depth);
+    const texture = textureLoader.load(texturePath);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(repeatX, repeatY);
+    const material = new THREE.MeshPhongMaterial({ map: texture, side: THREE.DoubleSide });
+    const plane = new THREE.Mesh(geometry, material);
+    plane.rotation.x = -Math.PI / 2;
+    plane.rotation.y = rotationY; // Add rotation for paths
+    plane.position.set(position.x, position.y, position.z);
+    plane.receiveShadow = true;
+    plane.castShadow = true;
+    scene.add(plane);
+    worldOctree.fromGraphNode(plane);
+    return plane;
 }
 
+// Load Animals and their main Cage Walls (jail_cage.glb)
+function loadAnimalAndMainCage(animalPath, mainCagePath, animalScale, mainCageScale, animalPos, mainCagePos, floorType) {
+    loader.load(animalPath, function (gltf) {
+        const animal = gltf.scene;
+        animal.scale.set(animalScale.x, animalScale.y, animalScale.z);
+        animal.position.set(animalPos.x, animalPos.y, animalPos.z);
+        animal.traverse((node) => {
+            if (node.isMesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
+            }
+        });
+        scene.add(animal);
+        // Animals themselves may or may not be collision objects depending on design
+        // worldOctree.fromGraphNode(animal);
 
-// Add these variables at the beginning of your script
-let isLeverHighlighted = false;
-const leverMessage = document.getElementById('leverMessage'); // Element to show lever message
+        // If animal has animations:
+        // if (gltf.animations && gltf.animations.length > 0) {
+        //     const mixer = new THREE.AnimationMixer(animal);
+        //     const action = mixer.clipAction(gltf.animations[0]);
+        //     action.play();
+        //     animalMixers.push(mixer);
+        // }
+    });
 
-// Add these functions to handle lever proximity and highlighting
-function checkLeverProximityAndOrientation() {
-    if (!lever) return;
+    loader.load(mainCagePath, function (gltf) {
+        const mainCage = gltf.scene;
+        mainCage.scale.set(mainCageScale.x, mainCageScale.y, mainCageScale.z);
+        mainCage.position.set(mainCagePos.x, mainCagePos.y, mainCagePos.z);
+        mainCage.traverse((node) => {
+            if (node.isMesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
+            }
+        });
+        scene.add(mainCage);
+        worldOctree.fromGraphNode(mainCage); // Main cage walls are collision objects
 
-    const leverPosition = new THREE.Vector3();
-    lever.getWorldPosition(leverPosition);
-    const playerPosition = new THREE.Vector3();
-    playerCollider.getCenter(playerPosition);
-
-    const distance = leverPosition.distanceTo(playerPosition);
-    const forwardVector = getForwardVector();
-    const directionToLever = leverPosition.clone().sub(playerPosition).normalize();
-
-    if (distance < 3 && forwardVector.dot(directionToLever) > 0.7) {
-        if (!isLeverHighlighted) {
-            highlightLever(true);
-            leverMessage.style.display = 'block';
-            isLeverHighlighted = true;
+        // Create specific floor for the cage
+        let cageFloorTexturePath;
+        let repeatFactor = 1;
+        // Adjust these paths and repeat factors based on your actual textures and desired look
+        switch (floorType) {
+            case 'grass':
+                cageFloorTexturePath = '/Floor/grass.jpg';
+                repeatFactor = 0.5;
+                break;
+            case 'sand':
+                cageFloorTexturePath = '/Floor/sand.jpg';
+                repeatFactor = 0.8;
+                break;
+            case 'tile':
+                cageFloorTexturePath = '/Floor/tile.jpg';
+                repeatFactor = 0.5;
+                break;
+            default:
+                cageFloorTexturePath = '/Floor/grass.jpg';
+                repeatFactor = 0.5;
         }
-    } else {
-        if (isLeverHighlighted) {
-            highlightLever(false);
-            leverMessage.style.display = 'none';
-            isLeverHighlighted = false;
-        }
-    }
-}
 
-function highlightLever(highlight) {
-    if (!lever) return;
-
-    lever.traverse((node) => {
-        if (node.isMesh) {
-            node.material.emissive = new THREE.Color(highlight ? 0x00ff00 : 0x000000);
-            node.material.emissiveIntensity = highlight ? 0.5 : 0;
-        }
+        const floorWidth = mainCageScale.x * 10; // Adjust multiplier based on your cage model's dimensions
+        const floorDepth = mainCageScale.z * 10;
+        createTexturedPlane(
+            floorWidth, floorDepth,
+            cageFloorTexturePath,
+            floorWidth * repeatFactor, floorDepth * repeatFactor,
+            new THREE.Vector3(mainCagePos.x, -0.01, mainCagePos.z)
+        );
     });
 }
 
-// FLOOR======================
-const floorSize = 50;
-const tileSize = 10;
-const numTiles = Math.ceil(floorSize / tileSize);
+// Load Wooden Fence for internal enclosures
+function loadWoodenFence(position, rotationY, scale) {
+    loader.load('/Wall/fence_wood.glb', function (gltf) {
+        const fence = gltf.scene;
+        fence.scale.set(scale.x, scale.y, scale.z);
+        fence.position.set(position.x, position.y, position.z);
+        fence.rotation.y = rotationY;
+        fence.traverse((node) => {
+            if (node.isMesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
+            }
+        });
+        scene.add(fence);
+        worldOctree.fromGraphNode(fence);
+    });
+}
 
-const floorGeometry = new THREE.PlaneGeometry(tileSize * numTiles, tileSize * numTiles, numTiles, numTiles);
-const floorMaterial = new THREE.MeshPhongMaterial({ color: 0x999999, depthWrite: true });
+// Load Note Board for map
+let mapBoard;
+function loadMapBoard(position, rotationY, scale) {
+    loader.load('/Wall/note_board_-mb.glb', function (gltf) {
+        mapBoard = gltf.scene;
+        mapBoard.scale.set(scale.x, scale.y, scale.z);
+        mapBoard.position.set(position.x, position.y, position.z);
+        mapBoard.rotation.y = rotationY;
+        mapBoard.traverse((node) => {
+            if (node.isMesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
+                // You can add a texture to the board's "screen" here
+                // For example, if the board has a mesh named 'screen_mesh'
+                // const mapTexture = textureLoader.load('/Map/map.jpg');
+                // node.material.map = mapTexture;
+                // node.material.needsUpdate = true;
+            }
+        });
+        scene.add(mapBoard);
+        worldOctree.fromGraphNode(mapBoard);
+    });
+}
 
-const floorLoader = new THREE.TextureLoader();
-const floorTexture = floorLoader.load('/Floor/tile.jpg');
-floorTexture.wrapS = THREE.RepeatWrapping;
-floorTexture.wrapT = THREE.RepeatWrapping;
-floorTexture.repeat.set(numTiles, numTiles);
-floorMaterial.map = floorTexture;
 
-const floorMesh = new THREE.Mesh(floorGeometry, floorMaterial);
-floorMesh.rotation.x = -Math.PI / 2;
-floorMesh.receiveShadow = true;
-floorMesh.castShadow = true;
-scene.add(floorMesh);
+// Load Trees (scatter them around the zoo, mostly in grass areas)
+function loadTree(treePath, scale, position, rotationY = 0) {
+    loader.load(treePath, function (gltf) {
+        const tree = gltf.scene;
+        tree.scale.set(scale.x, scale.y, scale.z);
+        tree.position.set(position.x, position.y, position.z);
+        tree.rotation.y = rotationY; // Allow rotating trees
+        tree.traverse((node) => {
+            if (node.isMesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
+            }
+        });
+        scene.add(tree);
+        worldOctree.fromGraphNode(tree);
+    });
+}
 
-worldOctree.fromGraphNode(floorMesh);
+// ====================================================================
+// ZOO LAYOUT: External Fence, Gate, Internal Paths, Cages, and Trees
+// ====================================================================
 
-// BACKGROUND
+const ZOO_BOUNDS_X = 40; // Max X distance from center for zoo
+const ZOO_BOUNDS_Z = 40; // Max Z distance from center for zoo
+const FENCE_SEGMENT_LENGTH = 10; // Approximate length of a single fence segment
+
+// --- EXTERNAL ZOO FENCE AND GATE ---
+// Assuming simple_bricks_and_steel_fence.glb is about 10 units long
+const brickFenceScale = new THREE.Vector3(10, 10, 10); // Adjust scale as needed for overall zoo size
+
+// North Fence (along Z positive)
+for (let x = -ZOO_BOUNDS_X + FENCE_SEGMENT_LENGTH / 2; x < ZOO_BOUNDS_X; x += FENCE_SEGMENT_LENGTH) {
+    if (x > -5 && x < 5) continue; // Skip area for gate
+    loader.load('/Wall/simple_bricks_and_steel_fence.glb', (gltf) => {
+        const fence = gltf.scene;
+        fence.scale.copy(brickFenceScale);
+        fence.position.set(x, 0, ZOO_BOUNDS_Z);
+        scene.add(fence);
+        worldOctree.fromGraphNode(fence);
+    });
+}
+
+// South Fence (along Z negative)
+for (let x = -ZOO_BOUNDS_X + FENCE_SEGMENT_LENGTH / 2; x < ZOO_BOUNDS_X; x += FENCE_SEGMENT_LENGTH) {
+    loader.load('/Wall/simple_bricks_and_steel_fence.glb', (gltf) => {
+        const fence = gltf.scene;
+        fence.scale.copy(brickFenceScale);
+        fence.position.set(x, 0, -ZOO_BOUNDS_Z);
+        scene.add(fence);
+        worldOctree.fromGraphNode(fence);
+    });
+}
+
+// East Fence (along X positive)
+for (let z = -ZOO_BOUNDS_Z + FENCE_SEGMENT_LENGTH / 2; z < ZOO_BOUNDS_Z; z += FENCE_SEGMENT_LENGTH) {
+    loader.load('/Wall/simple_bricks_and_steel_fence.glb', (gltf) => {
+        const fence = gltf.scene;
+        fence.scale.copy(brickFenceScale);
+        fence.rotation.y = Math.PI / 2; // Rotate 90 degrees
+        fence.position.set(ZOO_BOUNDS_X, 0, z);
+        scene.add(fence);
+        worldOctree.fromGraphNode(fence);
+    });
+}
+
+// West Fence (along X negative)
+for (let z = -ZOO_BOUNDS_Z + FENCE_SEGMENT_LENGTH / 2; z < ZOO_BOUNDS_Z; z += FENCE_SEGMENT_LENGTH) {
+    loader.load('/Wall/simple_bricks_and_steel_fence.glb', (gltf) => {
+        const fence = gltf.scene;
+        fence.scale.copy(brickFenceScale);
+        fence.rotation.y = -Math.PI / 2; // Rotate -90 degrees
+        fence.position.set(-ZOO_BOUNDS_X, 0, z);
+        scene.add(fence);
+        worldOctree.fromGraphNode(fence);
+    });
+}
+
+// Main Gate
+loader.load('/Wall/gate.glb', function (gltf) {
+    zooGate = gltf.scene; // Assign the loaded gate to the global variable
+    zooGate.scale.set(5, 5, 5); // Adjust gate scale
+    zooGate.position.set(0, 0, ZOO_BOUNDS_Z); // Position at the center of the north fence
+    scene.add(zooGate);
+    worldOctree.fromGraphNode(zooGate); // Gate is also a collision object
+});
+
+
+// Function to toggle the gate open/close
+function toggleGate() {
+    isGateAnimating = true;
+    const currentPosition = zooGate.position.clone();
+    const targetZ = isGateOpen ? ZOO_BOUNDS_Z : ZOO_BOUNDS_Z + 10; // Move gate 10 units forward/backward
+
+    new TWEEN.Tween(currentPosition)
+        .to({ z: targetZ }, 1000) // Animate over 1 second
+        .easing(TWEEN.Easing.Quadratic.InOut)
+        .onUpdate(() => {
+            zooGate.position.copy(currentPosition);
+        })
+        .onComplete(() => {
+            isGateOpen = !isGateOpen;
+            isGateAnimating = false;
+            // Rebuild octree if gate is a major collision object
+            worldOctree.fromGraphNode(scene); // Rebuild the entire octree for simplicity, or just update the gate's part
+        })
+        .start();
+}
+
+
+// --- ZOO GROUND AND PATHS ---
+const floorSize = ZOO_BOUNDS_X * 2 + 20; // Make floor larger than fence
+const pathWidth = 8;   // Width of the main paths
+
+// Main Grass Area (background layer for the whole zoo)
+createTexturedPlane(
+    floorSize, floorSize,
+    '/Floor/grass.jpg',
+    floorSize / 5, floorSize / 5,
+    new THREE.Vector3(0, -0.1, 0) // Slightly below other floors
+);
+
+// Main Entry Path (from gate inwards)
+createTexturedPlane(
+    pathWidth, ZOO_BOUNDS_Z * 1.5, // Path extends from outside gate into zoo
+    '/Floor/road.jpg',
+    1, ZOO_BOUNDS_Z / 10,
+    new THREE.Vector3(0, 0, ZOO_BOUNDS_Z / 2) // Extends from gate towards center
+);
+
+// Central North-South Path (inside the zoo)
+createTexturedPlane(
+    pathWidth, ZOO_BOUNDS_Z * 2 - pathWidth, // Extends almost full length
+    '/Floor/road.jpg',
+    1, (ZOO_BOUNDS_Z * 2 - pathWidth) / 10,
+    new THREE.Vector3(0, 0, 0)
+);
+
+// Central East-West Path (inside the zoo)
+createTexturedPlane(
+    ZOO_BOUNDS_X * 2 - pathWidth, pathWidth, // Extends almost full width
+    '/Floor/road.jpg',
+    (ZOO_BOUNDS_X * 2 - pathWidth) / 10, 1,
+    new THREE.Vector3(0, 0, 0)
+);
+
+
+// --- ZOO INTERNAL CAGES (with Wooden Fences) ---
+const CAGE_AREA_OFFSET_X = 20; // Distance from center for cages
+const CAGE_AREA_OFFSET_Z = 20; // Distance from center for cages
+const WOOD_FENCE_LENGTH = 10; // Approximate length of your fence_wood.glb model
+const WOOD_FENCE_SCALE = new THREE.Vector3(0.5, 0.5, 0.5); // Adjust this if your wooden fence is too big/small
+
+// Helper function to draw a square fence around a given position and size
+function createSquareWoodenFence(centerX, centerZ, cageWidth, cageDepth) {
+    const halfWidth = cageWidth / 2;
+    const halfDepth = cageDepth / 2;
+
+    // North side
+    for (let x = centerX - halfWidth + WOOD_FENCE_LENGTH / 2; x < centerX + halfWidth; x += WOOD_FENCE_LENGTH) {
+        loadWoodenFence(new THREE.Vector3(x, 0, centerZ + halfDepth), 0, WOOD_FENCE_SCALE);
+    }
+    // South side
+    for (let x = centerX - halfWidth + WOOD_FENCE_LENGTH / 2; x < centerX + halfWidth; x += WOOD_FENCE_LENGTH) {
+        loadWoodenFence(new THREE.Vector3(x, 0, centerZ - halfDepth), 0, WOOD_FENCE_SCALE);
+    }
+    // East side
+    for (let z = centerZ - halfDepth + WOOD_FENCE_LENGTH / 2; z < centerZ + halfDepth; z += WOOD_FENCE_LENGTH) {
+        loadWoodenFence(new THREE.Vector3(centerX + halfWidth, 0, z), Math.PI / 2, WOOD_FENCE_SCALE);
+    }
+    // West side
+    for (let z = centerZ - halfDepth + WOOD_FENCE_LENGTH / 2; z < centerZ + halfDepth; z += WOOD_FENCE_LENGTH) {
+        loadWoodenFence(new THREE.Vector3(centerX - halfWidth, 0, z), -Math.PI / 2, WOOD_FENCE_SCALE);
+    }
+}
+
+
+// Enclosure 1: African Buffalo
+const buffaloCageSize = { width: 15, depth: 15 };
+loadAnimalAndMainCage(
+    '/Animal/african_buffalo.glb',
+    '/Building/jail_cage.glb',
+    new THREE.Vector3(0.5, 0.5, 0.5),
+    new THREE.Vector3(1.5, 1.5, 1.5),
+    new THREE.Vector3(-CAGE_AREA_OFFSET_X, 0, -CAGE_AREA_OFFSET_Z),
+    new THREE.Vector3(-CAGE_AREA_OFFSET_X, 0, -CAGE_AREA_OFFSET_Z),
+    'grass'
+);
+createSquareWoodenFence(-CAGE_AREA_OFFSET_X, -CAGE_AREA_OFFSET_Z, buffaloCageSize.width, buffaloCageSize.depth);
+
+
+// Enclosure 2: Elephant
+const elephantCageSize = { width: 25, depth: 25 };
+loadAnimalAndMainCage(
+    '/Animal/elephant.glb',
+    '/Building/jail_cage.glb',
+    new THREE.Vector3(0.08, 0.08, 0.08),
+    new THREE.Vector3(2.5, 2.5, 2.5),
+    new THREE.Vector3(CAGE_AREA_OFFSET_X, 0, -CAGE_AREA_OFFSET_Z),
+    new THREE.Vector3(CAGE_AREA_OFFSET_X, 0, -CAGE_AREA_OFFSET_Z),
+    'sand'
+);
+createSquareWoodenFence(CAGE_AREA_OFFSET_X, -CAGE_AREA_OFFSET_Z, elephantCageSize.width, elephantCageSize.depth);
+
+
+// Enclosure 3: Giraffe
+const giraffeCageSize = { width: 15, depth: 15 };
+loadAnimalAndMainCage(
+    '/Animal/giraffe.glb',
+    '/Building/jail_cage.glb',
+    new THREE.Vector3(0.02, 0.02, 0.02),
+    new THREE.Vector3(1.5, 1.5, 1.5),
+    new THREE.Vector3(-CAGE_AREA_OFFSET_X, 0, CAGE_AREA_OFFSET_Z),
+    new THREE.Vector3(-CAGE_AREA_OFFSET_X, 0, CAGE_AREA_OFFSET_Z),
+    'grass'
+);
+createSquareWoodenFence(-CAGE_AREA_OFFSET_X, CAGE_AREA_OFFSET_Z, giraffeCageSize.width, giraffeCageSize.depth);
+
+
+// Enclosure 4: Lion
+const lionCageSize = { width: 15, depth: 15 };
+loadAnimalAndMainCage(
+    '/Animal/lion_lowpoly1.glb',
+    '/Building/jail_cage.glb',
+    new THREE.Vector3(0.05, 0.05, 0.05),
+    new THREE.Vector3(1.5, 1.5, 1.5),
+    new THREE.Vector3(CAGE_AREA_OFFSET_X, 0, CAGE_AREA_OFFSET_Z),
+    new THREE.Vector3(CAGE_AREA_OFFSET_X, 0, CAGE_AREA_OFFSET_Z),
+    'sand'
+);
+createSquareWoodenFence(CAGE_AREA_OFFSET_X, CAGE_AREA_OFFSET_Z, lionCageSize.width, lionCageSize.depth);
+
+
+// Add other animals and their enclosures similarly, defining their cage size
+// Enclosure: Gorilla
+const gorillaCageSize = { width: 12, depth: 12 };
+loadAnimalAndMainCage(
+    '/Animal/gorilla.glb',
+    '/Building/jail_cage.glb',
+    new THREE.Vector3(0.05, 0.05, 0.05),
+    new THREE.Vector3(1.2, 1.2, 1.2),
+    new THREE.Vector3(-10, 0, -ZOO_BOUNDS_Z + 15),
+    new THREE.Vector3(-10, 0, -ZOO_BOUNDS_Z + 15),
+    'tile'
+);
+createSquareWoodenFence(-10, -ZOO_BOUNDS_Z + 15, gorillaCageSize.width, gorillaCageSize.depth);
+
+
+// --- Trees ---
+// Smaller trees, strategically placed in grass areas around paths and cages
+loadTree('/Building/pine_tree.glb', new THREE.Vector3(0.05, 0.05, 0.05), new THREE.Vector3(-30, 0, -30), Math.random() * Math.PI * 2);
+loadTree('/Building/pine_tree.glb', new THREE.Vector3(0.06, 0.06, 0.06), new THREE.Vector3(30, 0, -30), Math.random() * Math.PI * 2);
+loadTree('/Building/pine_tree.glb', new THREE.Vector3(0.05, 0.05, 0.05), new THREE.Vector3(-30, 0, 30), Math.random() * Math.PI * 2);
+loadTree('/Building/pine_tree.glb', new THREE.Vector3(0.07, 0.07, 0.07), new THREE.Vector3(30, 0, 30), Math.random() * Math.PI * 2);
+
+loadTree('/Building/oak_trees.glb', new THREE.Vector3(0.01, 0.01, 0.01), new THREE.Vector3(-15, 0, -15), Math.random() * Math.PI * 2);
+loadTree('/Building/oak_trees.glb', new THREE.Vector3(0.012, 0.012, 0.012), new THREE.Vector3(15, 0, -15), Math.random() * Math.PI * 2);
+loadTree('/Building/oak_trees.glb', new THREE.Vector3(0.01, 0.01, 0.01), new THREE.Vector3(-15, 0, 15), Math.random() * Math.PI * 2);
+loadTree('/Building/oak_trees.glb', new THREE.Vector3(0.011, 0.011, 0.011), new THREE.Vector3(15, 0, 15), Math.random() * Math.PI * 2);
+
+loadTree('/Building/stylized_tree.glb', new THREE.Vector3(0.005, 0.005, 0.005), new THREE.Vector3(0, 0, -25), Math.random() * Math.PI * 2);
+loadTree('/Building/stylized_tree.glb', new THREE.Vector3(0.006, 0.006, 0.006), new THREE.Vector3(0, 0, 25), Math.random() * Math.PI * 2);
+loadTree('/Building/stylized_tree.glb', new THREE.Vector3(0.007, 0.007, 0.007), new THREE.Vector3(-25, 0, 0), Math.random() * Math.PI * 2);
+loadTree('/Building/stylized_tree.glb', new THREE.Vector3(0.008, 0.008, 0.008), new THREE.Vector3(25, 0, 0), Math.random() * Math.PI * 2);
+
+
+// --- MAP BOARD ---
+// Place the map board near the entrance of the zoo, possibly on the main path
+loadMapBoard(new THREE.Vector3(10, 2, ZOO_BOUNDS_Z - 10), Math.PI / 4, new THREE.Vector3(0.1, 0.1, 0.1));
+
+
+// BACKGROUND (Skybox)
 const backgroundGeometry = new THREE.SphereGeometry(500, 32, 32);
 
-const backgroundTextureLoader = new THREE.TextureLoader();
-const backgroundTexture = backgroundTextureLoader.load('/Background/ascentmap.jpg', (texture) => {
+const backgroundTexture = textureLoader.load('/Background/langit.jpg', (texture) => {
     texture.encoding = THREE.sRGBEncoding;
 });
 
@@ -566,57 +591,26 @@ scene.add(backgroundMesh);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1;
 
-scene.background = new THREE.Color(0xa0a0a0);
+scene.background = new THREE.Color(0xa0a0a0); // A default background color if texture is not loaded
 
 // LIGHTING
 const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
 scene.add(ambientLight);
 
 const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-directionalLight.position.set(5, 10, 7.5);
+directionalLight.position.set(50, 100, 75); // Adjust position for larger scene
 directionalLight.castShadow = true;
-directionalLight.shadow.mapSize.width = 512;  // Reduced shadow map size
-directionalLight.shadow.mapSize.height = 512; // Reduced shadow map size
+directionalLight.shadow.mapSize.width = 1024;  // Increased shadow map size for better quality
+directionalLight.shadow.mapSize.height = 1024; // Increased shadow map size for better quality
+directionalLight.shadow.camera.near = 0.5;
+directionalLight.shadow.camera.far = 200;
+directionalLight.shadow.camera.left = -50;
+directionalLight.shadow.camera.right = 50;
+directionalLight.shadow.camera.top = 50;
+directionalLight.shadow.camera.bottom = -50;
 scene.add(directionalLight);
 
-// Animation variables
-let isSpinning = false;
-let spinStartTime = 0;
-const spinDuration = 500;
-let isWeaponSwitching = false;
-
-function startSpin() {
-    if (!isSpinning) {
-        isSpinning = true;
-        spinStartTime = performance.now();
-    }
-}
-
-function handleSpin() {
-    if (isSpinning) {
-        const elapsedTime = performance.now() - spinStartTime;
-        if (elapsedTime < spinDuration) {
-            const spinAngle = (elapsedTime / spinDuration) * Math.PI * 2;
-            const twistAngle = Math.sin((elapsedTime / spinDuration) * Math.PI * 4) * 0.2;
-            
-            // Langsung atur rotasi pisau
-            knife.rotation.y = spinAngle;
-            knife.rotation.z = twistAngle;
-
-        } else {
-            isSpinning = false;
-            // Langsung kembalikan rotasi pisau
-            knife.rotation.copy(knife.userData.initialRotation);
-            isWeaponSwitching = false;
-        }
-    }
-}
-
-function preventKnifeClipping() {
-    if (knife.position.y <= -1.5) {
-        knife.position.copy(knife.userData.initialPosition);
-    }
-}
+// You can add more lights if needed for specific areas, e.g., PointLight for lampposts
 
 function animate() {
     requestAnimationFrame(animate);
@@ -629,34 +623,11 @@ function animate() {
         teleportPlayerIfOob();
     }
 
-    handleSpin();
-    preventKnifeClipping();
-    checkLeverProximityAndOrientation();
+    // Update animal animations if any
+    animalMixers.forEach(mixer => mixer.update(deltaTime));
 
-
-    if (mixer_chamber) {
-        mixer_chamber.update(deltaTime);
-    }
-    if (mixer_wallgun1) {
-        mixer_wallgun1.update(deltaTime);
-    }
-    if (mixer_wallgun2) {
-        mixer_wallgun2.update(deltaTime);
-    }
-    if (mixer_wallgun3) {
-        mixer_wallgun3.update(deltaTime);
-    }
-    if (mixer_wallgun4) {
-        mixer_wallgun4.update(deltaTime);
-    }
-
-    TWEEN.update();
+    TWEEN.update(); // Update Tweens for gate animation
     renderer.render(scene, camera);
 }
-
-updateCollectedMoneyDisplay();
-updateUncollectedMoneyDisplay();
-
-setInterval(generateMoney, 1000);
 
 animate();
