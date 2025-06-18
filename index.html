@@ -5,120 +5,150 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Zoo Tycoon</title>
-</head>
-<style>
-    body {
-        margin: 0;
-        overflow: hidden;
-        font-family: 'Arial', sans-serif;
-        /* Tambahkan ini jika Anda ingin memastikan body mengambil tinggi penuh viewport */
-        height: 100vh;
-        width: 100vw;
-    }
-    #container {
-        position: relative;
-        width: 100%;
-        height: 100vh;
-    }
-    #moneyContainer {
-        position: absolute;
-        top: 20px;
-        right: 20px;
-        z-index: 100;
-        display: flex;
-        align-items: center;
-        background-color: rgba(0, 0, 0, 0.6);
-        color: white;
-        padding: 10px 20px;
-        border-radius: 12px;
-        font-size: 20px;
-        font-weight: bold;
-        border: 2px solid rgba(255, 255, 255, 0.7);
-        gap: 15px;
-    }
-    #collectButton {
-        position: absolute;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 100;
-        background-color: #4CAF50;
-        color: white;
-        padding: 15px 30px;
-        border: none;
-        border-radius: 8px;
-        font-size: 22px;
-        font-weight: bold;
-        cursor: pointer;
-        transition: background-color 0.3s ease;
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-    }
-    #collectButton:hover {
-        background-color: #45a049;
-    }
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden; /* Prevent scrollbars due to Three.js canvas */
+            font-family: 'Arial', sans-serif;
+            height: 100vh; /* Ensure body takes full viewport height */
+            width: 100vw;  /* Ensure body takes full viewport width */
+            background-color: #333; /* A fallback background color in case Three.js fails */
+        }
+        #container {
+            position: relative; /* Essential for absolute positioning of UI elements */
+            width: 100%;
+            height: 100vh;
+            /* Make sure the canvas fills this container */
+        }
+        #moneyContainer {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 100; /* Ensure it's above the canvas */
+            display: flex;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 12px;
+            font-size: 20px;
+            font-weight: bold;
+            border: 2px solid rgba(255, 255, 255, 0.7);
+            gap: 15px; /* Space between the money displays */
+            user-select: none; /* Prevent text selection */
+        }
+        #collectButton {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%); /* Center horizontally */
+            z-index: 100;
+            background-color: #4CAF50; /* Green */
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 22px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            user-select: none;
+        }
+        #collectButton:hover {
+            background-color: #45a049;
+            transform: translateX(-50%) scale(1.02); /* Slight scale on hover */
+        }
+        #collectButton:active {
+            transform: translateX(-50%) scale(0.98); /* Slight press effect */
+        }
 
-    #shopPanel {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 400px;
-        max-height: 80vh;
-        overflow-y: auto;
-        background-color: rgba(0, 0, 0, 0.8);
-        color: white;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-        display: none;
-        z-index: 101;
-    }
-    #shopPanel h2 {
-        text-align: center;
-        margin-top: 0;
-        color: #FFD700;
-    }
-    .shop-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 10px 0;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-    }
-    .shop-item:last-child {
-        border-bottom: none;
-    }
-    .shop-item button {
-        background-color: #007bff;
-        color: white;
-        padding: 8px 15px;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-        transition: background-color 0.3s ease;
-    }
-    .shop-item button:hover {
-        background-color: #0056b3;
-    }
-    .shop-item button:disabled {
-        background-color: #6c757d;
-        cursor: not-allowed;
-    }
-</style>
+        #shopPanel {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%); /* Center both horizontally and vertically */
+            width: 400px;
+            max-height: 80vh; /* Limit height and allow scrolling */
+            overflow-y: auto; /* Enable vertical scrolling if content overflows */
+            background-color: rgba(0, 0, 0, 0.9); /* Slightly darker for better contrast */
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.7); /* Stronger shadow */
+            display: none; /* Hidden by default, controlled by JS */
+            z-index: 101; /* Above moneyContainer and button */
+        }
+        #shopPanel h2 {
+            text-align: center;
+            margin-top: 0;
+            color: #FFD700; /* Gold color for title */
+            border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .shop-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0; /* More vertical padding */
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            font-size: 1.1em; /* Slightly larger text */
+        }
+        .shop-item:last-child {
+            border-bottom: none;
+        }
+        .shop-item button {
+            background-color: #007bff; /* Blue */
+            color: white;
+            padding: 10px 20px; /* Larger padding for buttons */
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            font-weight: bold;
+        }
+        .shop-item button:hover {
+            background-color: #0056b3;
+        }
+        .shop-item button:disabled {
+            background-color: #6c757d; /* Gray for disabled */
+            cursor: not-allowed;
+            opacity: 0.7; /* Indicate disabled state */
+        }
+        .close-shop-button {
+            display: block; /* Makes it take full width */
+            width: fit-content; /* Adjusts width to content */
+            margin: 20px auto 0; /* Centers it below shop items */
+            background-color: #dc3545; /* Red */
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            font-weight: bold;
+        }
+        .close-shop-button:hover {
+            background-color: #c82333;
+        }
+    </style>
+</head>
 <body>
     <div id="container"></div>
+
     <div id="moneyContainer">
         <span id="uncollectedMoneyDisplay">💰 0</span>
         <span id="collectedMoneyDisplay">💵 0</span>
     </div>
-
     <button id="collectButton">Collect Money (C)</button>
 
     <div id="shopPanel">
         <h2>Zoo Shop</h2>
         <div id="shopItems">
             </div>
-        <p style="text-align: center; margin-top: 20px;">Press 'B' to open/close shop.</p>
+        <button class="close-shop-button" onclick="toggleShop()">Close Shop</button>
+        <p style="text-align: center; margin-top: 15px; font-size: 0.9em; color: #ccc;">Press 'B' to open/close shop.</p>
     </div>
 
     <script type="module" src="./src/main.js"></script>
