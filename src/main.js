@@ -158,9 +158,8 @@ let isLeverHighlighted = false;
 const raycaster = new THREE.Raycaster();
 const interactDistance = 3;
 
-// --- Arrow pointer for guiding player ---
 let arrowPointer;
-const pointerRaycaster = new THREE.Raycaster(); // Use a separate raycaster for clicking on the arrow
+const pointerRaycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
 
@@ -186,19 +185,15 @@ container.addEventListener('click', (event) => {
     }
 });
 
-// New mousedown event for arrow click
 document.addEventListener('mousedown', onDocumentMouseDown);
 
 function onDocumentMouseDown(event) {
     if (document.pointerLockElement === document.body) {
-        // Calculate mouse position in normalized device coordinates (-1 to +1)
         mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
         mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
-        // Update the raycaster with the camera and mouse position
         pointerRaycaster.setFromCamera(mouse, camera);
 
-        // Check for intersections with the arrow pointer
         if (arrowPointer && arrowPointer.visible) {
             const intersects = pointerRaycaster.intersectObject(arrowPointer, true);
             if (intersects.length > 0) {
@@ -397,37 +392,39 @@ async function createWoodenFenceAroundArea(centerX, centerZ, cageWidth, cageDept
     const WOOD_FENCE_MODEL_LENGTH = 10;
     const halfCageWidth = cageWidth / 2;
     const halfCageDepth = cageDepth / 2;
-    const fenceOffset = 0.5;
+    const fenceOffset = 0.5; // Offset to avoid z-fighting with the main cage model or floor
 
     const placeFenceSegment = async (x, z, rotationY) => {
-        const fence = await loadAndPlaceModel('/Wall/fence_wood.glb', woodFenceScale, new THREE.Vector3(x, 0, z), rotationY);
-        if (initialLoad) {
-             // For initial fences, add them directly to octree. For purchased, the global rebuild is fine.
-             // This is mostly for performance, the full rebuild will cover it too.
-        }
+        await loadAndPlaceModel('/Wall/fence_wood.glb', woodFenceScale, new THREE.Vector3(x, 0, z), rotationY);
     };
     
-    const numSegmentsX = Math.ceil(cageWidth / WOOD_FENCE_MODEL_LENGTH);
-    const numSegmentsZ = Math.ceil(cageDepth / WOOD_FENCE_MODEL_LENGTH);
+    // Calculate the number of segments needed
+    // Use a small buffer to ensure full coverage on corners/edges
+    const numSegmentsX = Math.ceil((cageWidth + WOOD_FENCE_MODEL_LENGTH) / WOOD_FENCE_MODEL_LENGTH);
+    const numSegmentsZ = Math.ceil((cageDepth + WOOD_FENCE_MODEL_LENGTH) / WOOD_FENCE_MODEL_LENGTH);
+
+    // Calculate actual start positions for fences to ensure they line up with the center
+    const startX = centerX - halfCageWidth + WOOD_FENCE_MODEL_LENGTH / 2;
+    const startZ = centerZ - halfCageDepth + WOOD_FENCE_MODEL_LENGTH / 2;
 
     // North side (along Z positive)
     for (let i = 0; i < numSegmentsX; i++) {
-        const xPos = centerX - halfCageWidth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
+        const xPos = startX + (i * WOOD_FENCE_MODEL_LENGTH);
         await placeFenceSegment(xPos, centerZ + halfCageDepth + fenceOffset, 0);
     }
     // South side (along Z negative)
     for (let i = 0; i < numSegmentsX; i++) {
-        const xPos = centerX - halfCageWidth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
+        const xPos = startX + (i * WOOD_FENCE_MODEL_LENGTH);
         await placeFenceSegment(xPos, centerZ - halfCageDepth - fenceOffset, 0);
     }
     // East side (along X positive)
     for (let i = 0; i < numSegmentsZ; i++) {
-        const zPos = centerZ - halfCageDepth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
+        const zPos = startZ + (i * WOOD_FENCE_MODEL_LENGTH);
         await placeFenceSegment(centerX + halfCageWidth + fenceOffset, zPos, Math.PI / 2);
     }
     // West side (along X negative)
     for (let i = 0; i < numSegmentsZ; i++) {
-        const zPos = centerZ - halfCageDepth + (i * WOOD_FENCE_MODEL_LENGTH) + WOOD_FENCE_MODEL_LENGTH / 2;
+        const zPos = startZ + (i * WOOD_FENCE_MODEL_LENGTH);
         await placeFenceSegment(centerX - halfCageWidth - fenceOffset, zPos, -Math.PI / 2);
     }
 }
@@ -448,7 +445,7 @@ const BUILD_ZONES = [
             animalPath: '/Animal/african_buffalo.glb',
             mainCagePath: '/Building/jail_cage.glb',
             animalScale: new THREE.Vector3(0.5, 0.5, 0.5),
-            mainCageScale: new THREE.Vector3(1.5, 1.5, 1.5),
+            mainCageScale: new THREE.Vector3(1.5, 1.5, 1.5), // This implies a 15x15 unit cage area (1.5 * 10)
             floorType: 'grass',
             woodFenceScale: new THREE.Vector3(0.5, 0.5, 0.5),
             baseIncome: 10, // Base income per animal
@@ -468,7 +465,7 @@ const BUILD_ZONES = [
             animalPath: '/Animal/elephant.glb',
             mainCagePath: '/Building/jail_cage.glb',
             animalScale: new THREE.Vector3(0.08, 0.08, 0.08),
-            mainCageScale: new THREE.Vector3(2.5, 2.5, 2.5),
+            mainCageScale: new THREE.Vector3(2.5, 2.5, 2.5), // This implies a 25x25 unit cage area (2.5 * 10)
             floorType: 'sand',
             woodFenceScale: new THREE.Vector3(0.5, 0.5, 0.5),
             baseIncome: 15,
@@ -559,7 +556,6 @@ async function initializeBuildZones() {
         zone.currentCost = zone.cageData.baseCost;
 
         // Create initial wooden fence around the zone
-        // Only load if not already loaded (prevents duplicate loads on refresh)
         if (!zone.initialFenceLoaded) {
             const cageWidth = zone.cageData.mainCageScale.x * WOOD_FENCE_UNIT_SCALE_MULTIPLIER;
             const cageDepth = zone.cageData.mainCageScale.z * WOOD_FENCE_UNIT_SCALE_MULTIPLIER;
@@ -593,17 +589,10 @@ function updateArrowPointer() {
         playerForward.normalize().multiplyScalar(5); // 5 units in front of player
 
         arrowPointer.position.copy(camera.position).add(playerForward);
-        arrowPointer.position.y = 1; // Slightly above ground
+        arrowPointer.position.y = 1 + Math.sin(performance.now() * 0.005) * 0.2; // Floating effect
 
         // Make arrow point to the target zone
-        const direction = new THREE.Vector3().subVectors(targetZone.position, arrowPointer.position).normalize();
-        const axis = new THREE.Vector3(0, 1, 0); // Y-axis
-        arrowPointer.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction); // Point arrow forward
-        arrowPointer.lookAt(targetZone.position); // Make it look at the target
-
-
-        // Optional: Animate arrow up and down
-        arrowPointer.position.y = 1 + Math.sin(performance.now() * 0.005) * 0.2; // Floating effect
+        arrowPointer.lookAt(targetZone.position.x, targetZone.position.y + 1, targetZone.position.z);
 
     } else if (arrowPointer) {
         arrowPointer.visible = false;
@@ -616,17 +605,15 @@ function teleportToBuildZone() {
     if (targetZone) {
         const teleportPosition = targetZone.position.clone();
         // Teleport player slightly away from the zone, facing it
-        teleportPosition.x += 0; // Adjust these offsets
-        teleportPosition.z += 10; // To place player in front of the zone
+        teleportPosition.x += 0;
+        teleportPosition.z += 10; // Place player in front of the zone
         
         playerCollider.start.set(teleportPosition.x, SPAWN_POINT_Y_CAPSULE_BOTTOM, teleportPosition.z);
         playerCollider.end.set(teleportPosition.x, SPAWN_POINT_Y_CAPSULE_BOTTOM + 0.4, teleportPosition.z);
         playerCollider.radius = 0.8;
         camera.position.copy(playerCollider.end);
 
-        // Optionally, make camera look at the target zone
-        camera.lookAt(targetZone.position.x, targetZone.position.y + 1, targetZone.position.z); // Look at the zone
-
+        camera.lookAt(targetZone.position.x, targetZone.position.y + 1, targetZone.position.z);
         console.log(`Teleporting to zone ${targetZone.id}`);
     }
 }
@@ -690,22 +677,15 @@ async function handleBuildZoneClick(zoneId) {
     updateCollectedMoneyDisplay();
 
     if (zone.status === 'empty') {
-        // Remove initial wooden fence as a new one (or cage) is placed.
-        // For simplicity, we just rebuild octree and assume old fences are overwritten/ignored for collision.
-        // For visual, you might need to explicitly remove initial fence objects.
-        // For this implementation, the new cage/fence will overlap the initial fence, which is acceptable visually.
+        // We will remove and re-create fences to ensure they are properly aligned with the main cage model.
+        // For Three.js, it's generally cleaner to remove and add rather than complex updates if objects are static.
+        // This is a simplified approach, a more robust system might hide/replace existing fence meshes.
+        // Since initial fences are added to worldOctree, rebuilding it will take care of collisions.
 
         await loadAndPlaceModel(
             zone.cageData.mainCagePath,
             zone.cageData.mainCageScale,
             zone.position
-        );
-        await createWoodenFenceAroundArea( // Re-create fence around the actual cage
-            zone.position.x, zone.position.z,
-            zone.cageData.mainCageScale.x * WOOD_FENCE_UNIT_SCALE_MULTIPLIER,
-            zone.cageData.mainCageScale.z * WOOD_FENCE_UNIT_SCALE_MULTIPLIER,
-            zone.cageData.woodFenceScale,
-            false // Not initial load
         );
         createTexturedPlane(
             zone.cageData.mainCageScale.x * WOOD_FENCE_UNIT_SCALE_MULTIPLIER,
@@ -745,7 +725,7 @@ async function handleBuildZoneClick(zoneId) {
         console.log(`${animalName} purchased and placed in ${zone.cageData.name}!`);
     }
     
-    worldOctree.fromGraphNode(scene);
+    worldOctree.fromGraphNode(scene); // Rebuild octree after adding new objects
     updateBuildZoneButtons();
 }
 
@@ -754,8 +734,8 @@ const ZOO_BOUNDS_X = 40;
 const ZOO_BOUNDS_Z = 40;
 
 // --- SPAWN POINT AREA ---
-const SPAWN_AREA_WIDTH = 20;
-const SPAWN_AREA_DEPTH = 20;
+const SPAWN_AREA_WIDTH = 1; // Hanya 1 tile
+const SPAWN_AREA_DEPTH = 1; // Hanya 1 tile
 const SPAWN_FLOOR_Y = 0;
 const ZOO_MAIN_FLOOR_Y = -0.05;
 
@@ -764,7 +744,7 @@ const ZOO_MAIN_FLOOR_Y = -0.05;
 createTexturedPlane(
     SPAWN_AREA_WIDTH, SPAWN_AREA_DEPTH,
     '/Floor/sp.jpg', // Menggunakan sp.jpg
-    SPAWN_AREA_WIDTH / 5, SPAWN_AREA_DEPTH / 5,
+    1, 1, // Repeat 1,1 untuk 1 tile
     new THREE.Vector3(SPAWN_POINT_X, SPAWN_FLOOR_Y, SPAWN_POINT_Z)
 );
 
@@ -938,7 +918,7 @@ function createArrowPointer() {
     scene.add(arrowGroup);
     return arrowGroup;
 }
-arrowPointer = createArrowPointer(); // Initialize the arrow pointer
+arrowPointer = createArrowPointer();
 
 
 function animate() {
@@ -956,7 +936,7 @@ function animate() {
 
     checkLeverInteraction();
     updateBuildZoneButtons();
-    updateArrowPointer(); // Update arrow position and visibility
+    updateArrowPointer();
 
     TWEEN.update();
     renderer.render(scene, camera);
@@ -967,6 +947,6 @@ playerMoney = 0;
 uncollectedMoney = 0;
 updateCollectedMoneyDisplay();
 updateUncollectedMoneyDisplay();
-initializeBuildZones(); // This will also load initial fences
+initializeBuildZones();
 
 animate();
