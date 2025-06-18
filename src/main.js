@@ -685,7 +685,7 @@ loader.load('/Lever/lever.glb', function (gltf) {
     lever = gltf.scene;
     lever.scale.set(1, 1, 1); // Skala tuas
     lever.rotation.set(0, Math.PI / 2, 0);
-    lever.position.set(TABLE_POS_X, LEVER_POS_Y_ON_TABLE, TABLE_POS_Z); // Tuas di atas meja
+    lever.position.set(TABLE_POS_X, LEVER_POS_Y_ON_TABLE+0.8, TABLE_POS_Z); // Tuas di atas meja
     scene.add(lever);
     worldOctree.fromGraphNode(lever);
 }, undefined, (error) => { console.error('Error loading Lever model:', error); });
