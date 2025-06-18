@@ -58,7 +58,7 @@
 
     /* Style untuk tombol pembelian 3D */
     .build-button {
-        background-color: #007bff; /* Blue */
+        background-color: #007bff;
         color: white;
         padding: 8px 15px;
         border: none;
@@ -78,6 +78,22 @@
     .build-button.hidden {
         display: none;
     }
+    
+    /* Lever Message UI */
+    #leverMessage {
+        position: absolute;
+        top: 80%; /* Adjust as needed */
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: white;
+        font-size: 24px;
+        background: rgba(0, 0, 0, 0.5);
+        padding: 10px;
+        border-radius: 5px;
+        pointer-events: none; /* Allows clicks to pass through */
+        display: none; /* Hidden by default */
+        z-index: 99;
+    }
 </style>
 <body>
     <div id="container"></div>
@@ -87,6 +103,8 @@
     </div>
 
     <button id="collectButton">Collect Money (C)</button>
+
+    <div id="leverMessage">Press F to pull lever</div>
 
     <div id="labels"></div>
 
