@@ -4,16 +4,15 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zoo Environment</title>
-</head>
+    <title>Zoo Tycoon</title> </head>
 <style>
-    body { margin: 0; overflow: hidden; } /* Ensure no scrollbars */
+    body { margin: 0; overflow: hidden; font-family: 'Arial', sans-serif; } /* Added font */
     #container {
-        position: relative; /* Make sure it's positioned for renderer.domElement */
+        position: relative;
         width: 100%;
-        height: 100vh; /* Use 100vh to ensure it fills the viewport height */
+        height: 100vh;
     }
-    #leverMessage { /* Kept for potential future use or debugging */
+    #leverMessage { /* Kept but not actively used in this tycoon logic */
         display: none;
         position: absolute;
         top: 50%;
@@ -24,12 +23,111 @@
         background: rgba(0, 0, 0, 0.5);
         padding: 10px;
         border-radius: 5px;
-        pointer-events: none; /* Allows clicks to pass through to the canvas */
+        pointer-events: none;
+    }
+    #moneyContainer {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        background-color: rgba(0, 0, 0, 0.6); /* Slightly darker for better contrast */
+        color: white;
+        padding: 10px 20px;
+        border-radius: 12px;
+        font-size: 20px; /* Slightly smaller */
+        font-weight: bold;
+        border: 2px solid rgba(255, 255, 255, 0.7);
+        gap: 15px; /* Spacing between money displays */
+    }
+    /* Style for the collect button (new UI element) */
+    #collectButton {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+        background-color: #4CAF50; /* Green */
+        color: white;
+        padding: 15px 30px;
+        border: none;
+        border-radius: 8px;
+        font-size: 22px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    }
+    #collectButton:hover {
+        background-color: #45a049;
+    }
+
+    /* Basic shop UI placeholder - can be expanded later */
+    #shopPanel {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 400px;
+        max-height: 80vh;
+        overflow-y: auto;
+        background-color: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        display: none; /* Hidden by default */
+        z-index: 101; /* Above other UI */
+    }
+    #shopPanel h2 {
+        text-align: center;
+        margin-top: 0;
+        color: #FFD700; /* Gold color for title */
+    }
+    .shop-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .shop-item:last-child {
+        border-bottom: none;
+    }
+    .shop-item button {
+        background-color: #007bff; /* Blue */
+        color: white;
+        padding: 8px 15px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+    }
+    .shop-item button:hover {
+        background-color: #0056b3;
+    }
+    .shop-item button:disabled {
+        background-color: #6c757d;
+        cursor: not-allowed;
     }
 </style>
 <body>
     <div id="container"></div>
-    <div id="leverMessage">Press F to open</div>
+    <div id="leverMessage" style="display: none;"></div> <div id="moneyContainer">
+        <span id="uncollectedMoneyDisplay">💰 0</span>
+        <span id="collectedMoneyDisplay">💵 0</span>
+    </div>
+
+    <button id="collectButton">Collect Money (C)</button>
+
+    <div id="shopPanel">
+        <h2>Zoo Shop</h2>
+        <div id="shopItems">
+            </div>
+        <p style="text-align: center; margin-top: 20px;">Press 'B' to open/close shop.</p>
+    </div>
+
     <script type="module" src="./src/main.js"></script>
 </body>
 </html>
