@@ -72,6 +72,7 @@ let buildLeverModel = null;
 let pensPurchasedCount = 0; // Menghitung jumlah kandang yang sudah dibeli
 const TOTAL_PENS = 9;
 let penObjects = []; // Hanya untuk menyimpan model kandang
+let gorillaMixers = [];
 
 // Objek interaktif akan dikelola di sini
 let interactiveObjects = [];
@@ -479,7 +480,7 @@ function loadPineTree(position) {
             { x: 0, z: 0, width: 26, depth: 26 }, 
             
             // Area bangunan utama (diberi buffer ekstra)
-            { x: -10, z: 10, width: 12, depth: 12 }, 
+            { x: -10, z: 10, width: 18, depth: 18 }, 
             
             // Area meja dan tuas-tuas (diberi buffer ekstra)
             { x: 15, z: -5, width: 8, depth: 10 },
@@ -518,6 +519,49 @@ function loadPineTree(position) {
         }
     }
 
+    // Ganti seluruh fungsi ini di BAGIAN 4
+
+function loadGorilla(position) {
+    console.log("MEMUAT GORILA di posisi:", position);
+    loader.load('/Animal/gorilla.glb', (gltf) => {
+        const gorilla = gltf.scene;
+        
+        // =======================================================
+        // PERBAIKAN: Logika baru untuk menengahkan model secara otomatis
+        // =======================================================
+
+        // 1. Hitung "bounding box" (kotak tak terlihat yang mengelilingi model)
+        const box = new THREE.Box3().setFromObject(gorilla);
+        
+        // 2. Dapatkan titik tengah dari kotak tersebut
+        const center = box.getCenter(new THREE.Vector3());
+
+        // 3. Pindahkan model sejauh negatif dari pusatnya.
+        // Ini akan membuat pusat geometris model berada di titik origin (0,0,0)
+        gorilla.position.sub(center); 
+        
+        // 4. SEKARANG baru pindahkan model ke posisi kandang yang benar
+        gorilla.position.add(position);
+
+        // Atur skala (Anda mungkin perlu menyesuaikan ini lagi)
+        gorilla.scale.set(200, 200, 200);
+        
+        scene.add(gorilla);
+        worldOctree.fromGraphNode(gorilla);
+
+        // --- Bagian Animasi (tidak berubah) ---
+        const mixer = new THREE.AnimationMixer(gorilla);
+        console.log(`Animasi ditemukan di gorilla.glb:`, gltf.animations);
+        const clip = gltf.animations[0]; 
+        if (clip) {
+            const action = mixer.clipAction(clip);
+            action.play();
+        }
+        gorillaMixers.push(mixer);
+
+    }, undefined, (error) => console.error('Gagal memuat gorila:', error));
+}
+
 function buyAllTrees() {
     // Cek kondisi pembelian
     if (areTreesPurchased || playerMoney < TREES_COST) {
@@ -538,6 +582,7 @@ function buyAllTrees() {
     // Beri bonus income karena area sudah bagus
     currentIncomeRate += 100;
     updateIncomeRateDisplay();
+    saveGame(); // Simpan game setelah pembelian
 }
 
 
@@ -571,6 +616,7 @@ function buyNextPen() {
     const nextPen = penObjects[pensPurchasedCount];
     if (nextPen) {
         nextPen.visible = true;
+        loadGorilla(nextPen.position);
     }
 
     // Tambah jumlah kandang yang dibeli
@@ -579,6 +625,7 @@ function buyNextPen() {
     // Tingkatkan pendapatan pemain dan perbarui tampilan
     currentIncomeRate += incomePerPen;
     updateIncomeRateDisplay();
+    saveGame(); // Simpan game setelah pembelian
 }
 
 // Ganti fungsi buildBuilding() Anda dengan yang ini
@@ -626,9 +673,84 @@ function buildBuilding() {
         // 3. Pastikan pesan interaksi juga hilang
         activeInteraction = null;
         leverMessage.style.display = 'none';
+        saveGame(); // Simpan game setelah pembelian
     }
 }
 
+// Tambahkan DUA fungsi ini di BAGIAN 4
+
+function saveGame() {
+    const saveData = {
+        money: playerMoney,
+        uncollected: uncollectedMoney,
+        income: currentIncomeRate,
+        buildingLvl: buildingLevel,
+        pensBought: pensPurchasedCount,
+        treesBought: areTreesPurchased
+    };
+
+    localStorage.setItem('tycoonGameSave', JSON.stringify(saveData));
+    console.log('Game Saved!');
+}
+
+// Ganti seluruh fungsi ini di BAGIAN 4
+
+function loadGame() {
+    const savedDataString = localStorage.getItem('tycoonGameSave');
+    if (!savedDataString) {
+        console.log('No save data found. Starting a new game.');
+        return;
+    }
+
+    const savedData = JSON.parse(savedDataString);
+
+    // 1. Terapkan data yang disimpan (tidak ada perubahan di sini)
+    playerMoney = savedData.money;
+    uncollectedMoney = savedData.uncollected;
+    currentIncomeRate = savedData.income;
+    buildingLevel = savedData.buildingLvl;
+    pensPurchasedCount = savedData.pensBought;
+    areTreesPurchased = savedData.treesBought;
+    console.log('Game Loaded!');
+
+    // 2. Perbarui tampilan visual berdasarkan data yang dimuat
+    updateCollectedMoneyDisplay();
+    updateUncollectedMoneyDisplay();
+    updateIncomeRateDisplay();
+
+    // Memunculkan kembali kandang DAN GORILA yang sudah dibeli
+    for (let i = 0; i < pensPurchasedCount; i++) {
+        const penModel = penObjects[i];
+        if (penModel) {
+            penModel.visible = true;
+            // =======================================================
+            // BARU: Muat gorila untuk setiap kandang yang sudah ada
+            // =======================================================
+            loadGorilla(penModel.position);
+        }
+    }
+
+    // Memunculkan kembali bangunan (tidak ada perubahan di sini)
+    if (buildingLevel >= 1) {
+        if (buildLeverModel) {
+            buildLeverModel.visible = false;
+        }
+        interactiveObjects = interactiveObjects.filter(obj => obj.action !== buildBuilding);
+        loader.load(buildingTierModels[0], (gltf) => {
+            const newBuilding = gltf.scene;
+            newBuilding.position.set(-10, 0, 10);
+            newBuilding.scale.set(2, 2, 2);
+            scene.add(newBuilding);
+            worldOctree.fromGraphNode(newBuilding);
+            buildings[0] = newBuilding;
+        });
+    }
+
+    // Memunculkan kembali pohon (tidak ada perubahan di sini)
+    if (areTreesPurchased) {
+        placeTreesProcedurally(50);
+    }
+}
 // =================================================================
 // BAGIAN 5: EVENT LISTENERS
 // =================================================================
@@ -678,6 +800,7 @@ function animate() {
         updatePlayer(deltaTime);
         teleportPlayerIfOob();
     };
+    gorillaMixers.forEach(mixer => mixer.update(clock.getDelta()));
     updateInteractions(); // Satu fungsi untuk semua interaksi
     TWEEN.update();
     renderer.render(scene, camera);
@@ -688,6 +811,8 @@ updateCollectedMoneyDisplay();
 updateUncollectedMoneyDisplay();
 updateIncomeRateDisplay();
 setInterval(generateMoney, 1000);
+
+//loadGame();
 
 // Mulai Loop Animasi
 animate();
