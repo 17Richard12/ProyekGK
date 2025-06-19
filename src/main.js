@@ -100,7 +100,7 @@ loader.load('/Lever/table.glb', function (gltf) {
 loader.load('/Lever/lever.glb', function (gltf) {
     const collectLever = gltf.scene;
     collectLever.scale.set(1, 1, 1);
-    collectLever.rotation.set(0, Math.PI / 2, 0);
+    collectLever.rotation.set(0, Math.PI / 2, 0); // Pastikan ini rotasi awal yang benar
     collectLever.position.set(15, 0.7, -3);
     scene.add(collectLever);
     interactiveObjects.push({
@@ -120,7 +120,7 @@ loader.load('/Lever/lever.glb', function (gltf) {
     buildLeverModel = buildLever;
 
     buildLever.scale.set(1, 1, 1);
-    buildLever.rotation.set(0, Math.PI / 2, 0);
+    buildLever.rotation.set(0, Math.PI / 2, 0); // Pastikan ini rotasi awal yang benar
     buildLever.position.set(15, 0.7, -7);
     scene.add(buildLever);
 
@@ -146,7 +146,7 @@ loader.load('/Lever/lever.glb', function (gltf) {
 loader.load('/Lever/lever.glb', function (gltf) {
     const penAnimalLever = gltf.scene;
     penAnimalLever.scale.set(1, 1, 1);
-    penAnimalLever.rotation.set(0, Math.PI / 2, 0);
+    penAnimalLever.rotation.set(0, Math.PI / 2, 0); // Pastikan ini rotasi awal yang benar
     penAnimalLever.position.set(15, 0.7, -5);
     scene.add(penAnimalLever);
 
@@ -214,15 +214,14 @@ loader.load('/Lever/lever.glb', function (gltf) {
     function loadAnimalModel(position, rotationY = 0, parentGroup, animalIndex) {
         loader.load('/Animal/giraffe.glb', function (gltf) {
             const animal = gltf.scene;
-            animal.scale.set(0.5, 0.5, 0.5); // Ukuran jerapah
+            animal.scale.set(200, 200, 200); // Skala jerapah
             animal.rotation.y = rotationY;
             animal.position.copy(position);
-            parentGroup.add(animal); // Tambahkan jerapah ke dalam grup kandang
-            worldOctree.fromGraphNode(animal); // Tambahkan ke octree untuk collision
-            animalObjects[animalIndex] = animal; // Simpan referensi model
+            parentGroup.add(animal);
+            worldOctree.fromGraphNode(animal);
+            animalObjects[animalIndex] = animal;
         }, undefined, function (error) {
             console.error('An error occurred while loading the giraffe model:', error);
-            // Tambahkan pesan visual ke UI jika terjadi error loading
             leverMessage.innerText = 'Gagal memuat model jerapah. Cek konsol.';
             leverMessage.style.display = 'block';
         });
@@ -428,18 +427,33 @@ function updateInteractions() {
     }
 }
 
+// --- FUNGSI UTAMA UNTUK ANIMASI TUAS ---
 function animateLeverPull(leverToAnimate) {
-    if (!leverToAnimate || TWEEN.getAll().length > 0) return;
-    const startRotation = { y: leverToAnimate.rotation.y };
-    const endRotation = { y: leverToAnimate.rotation.y + Math.PI / 4 };
-    new TWEEN.Tween(startRotation)
-        .to(endRotation, 200)
-        .easing(TWEEN.Easing.Quadratic.InOut)
-        .onUpdate(() => { leverToAnimate.rotation.y = startRotation.y; })
-        .yoyo(true)
-        .repeat(1)
-        .start();
+    // Pastikan tidak ada animasi lain yang sedang berjalan pada tuas ini
+    if (!leverToAnimate || TWEEN.getAll().some(tween => tween.isPlaying() && tween.object === leverToAnimate)) {
+        return;
+    }
+
+    const initialRotationX = leverToAnimate.rotation.x; // Simpan rotasi X awal
+    const rotateAngle = Math.PI / 4; // Rotasi 45 derajat (sesuaikan jika perlu)
+
+    // Animasi turun
+    const tweenDown = new TWEEN.Tween(leverToAnimate.rotation)
+        .to({ x: initialRotationX + rotateAngle }, 150) // Turun 45 derajat
+        .easing(TWEEN.Easing.Quadratic.Out);
+
+    // Animasi naik kembali
+    const tweenUp = new TWEEN.Tween(leverToAnimate.rotation)
+        .to({ x: initialRotationX }, 150) // Kembali ke posisi awal
+        .easing(TWEEN.Easing.Quadratic.Out);
+
+    // Rantai animasi: turun lalu naik
+    tweenDown.chain(tweenUp);
+
+    // Mulai animasi
+    tweenDown.start();
 }
+
 
 function loadPineTree(position) {
     loader.load('/Building/pine_tree.glb', function (gltf) {
@@ -506,7 +520,6 @@ function buyAllTrees() {
 }
 
 function buyAnimal() {
-    // Memastikan semua kandang sudah dibeli dan belum semua hewan dibeli
     if (pensPurchasedCount < TOTAL_PENS || animalsPurchasedCount >= TOTAL_ANIMALS || playerMoney < ANIMAL_COST) {
         return;
     }
@@ -516,20 +529,13 @@ function buyAnimal() {
 
     animateLeverPull(interactiveObjects.find(o => o.action === handlePenAnimalLeverAction)?.model);
 
-    // Tentukan kandang mana yang akan ditempati hewan
-    // Hewan ke-0 akan masuk kandang ke-0, hewan ke-1 masuk kandang ke-1, dst.
     const targetPenIndex = animalsPurchasedCount;
     const targetPenGroup = penObjects[targetPenIndex];
 
     if (targetPenGroup) {
-        // Posisi hewan di tengah kandang, sedikit di atas lantai
-        // Rotasi acak agar tidak seragam
         loadAnimalModel(new THREE.Vector3(0, 0.5, 0), Math.random() * Math.PI * 2, targetPenGroup, animalsPurchasedCount);
     } else {
         console.warn(`Kandang dengan indeks ${targetPenIndex} tidak ditemukan untuk menempatkan hewan.`);
-        // Opsional: kembalikan uang jika kandang tidak ada
-        // playerMoney += ANIMAL_COST;
-        // updateCollectedMoneyDisplay();
     }
 
     animalsPurchasedCount++;
@@ -538,17 +544,11 @@ function buyAnimal() {
 }
 
 function handlePenAnimalLeverAction() {
-    // Prioritas:
-    // 1. Beli Hewan: Jika semua kandang sudah dibeli TAPI belum semua hewan dibeli.
     if (pensPurchasedCount >= TOTAL_PENS && animalsPurchasedCount < TOTAL_ANIMALS) {
         buyAnimal();
-    }
-    // 2. Beli Pohon: Jika semua kandang DAN semua hewan sudah dibeli.
-    else if (pensPurchasedCount >= TOTAL_PENS && animalsPurchasedCount >= TOTAL_ANIMALS) {
+    } else if (pensPurchasedCount >= TOTAL_PENS && animalsPurchasedCount >= TOTAL_ANIMALS) {
         buyAllTrees();
-    }
-    // 3. Beli Kandang: Default, jika kondisi di atas tidak terpenuhi.
-    else {
+    } else {
         buyNextPen();
     }
 }
@@ -661,7 +661,7 @@ function animate() {
         teleportPlayerIfOob();
     };
     updateInteractions();
-    TWEEN.update();
+    TWEEN.update(); // Pastikan TWEEN.update() dipanggil di setiap frame
     renderer.render(scene, camera);
 }
 
