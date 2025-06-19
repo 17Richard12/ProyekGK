@@ -47,7 +47,9 @@ let currentIncomeRate = 10;
 // PERUBAHAN: Rate dasar + rate per bangunan + rate per kandang akan kita kelola
 const incomeRatePerBuilding = [10, 25, 75, 200]; 
 const incomePerPen = 5; // Setiap kandang yang dibeli menambah +5 income
-const PEN_COST = 250; // Menetapkan harga per kandang
+const PEN_COST = 50; // Menetapkan harga per kandang
+const TREES_COST = 1000; // BARU: Harga untuk membeli semua pohon sekaligus
+let areTreesPurchased = false;
 
 const uncollectedMoneyDisplay = document.getElementById('uncollectedMoneyDisplay');
 const collectedMoneyDisplay = document.getElementById('collectedMoneyDisplay');
@@ -166,8 +168,9 @@ loader.load('/Lever/lever.glb', function (gltf) {
     });
 });
 
+// Ganti blok loader.load untuk tuas tengah Anda dengan yang ini
 // =======================================================
-// BARU: TUAS KHUSUS UNTUK MEMBELI KANDANG
+// BARU: TUAS PINTAR UNTUK KANDANG & POHON
 // =======================================================
 loader.load('/Lever/lever.glb', function (gltf) {
     const penLever = gltf.scene;
@@ -178,15 +181,28 @@ loader.load('/Lever/lever.glb', function (gltf) {
 
     interactiveObjects.push({
         model: penLever,
-        action: buyNextPen, // Fungsi baru yang akan kita buat
+        action: handlePenLeverAction, // Fungsi baru yang akan menentukan aksi
         getDetails: () => {
-            if (pensPurchasedCount >= TOTAL_PENS) {
-                return { canInteract: false, message: 'Semua Kandang Telah Dibeli', highlightColor: '#ffff00' };
+            // State 3: Semua pengembangan lahan selesai
+            if (areTreesPurchased) {
+                return { canInteract: false, message: 'Pengembangan Area Selesai', highlightColor: '#00ffaa' };
             }
+            
+            // State 2: Semua kandang sudah dibeli, tawarkan pembelian pohon
+            if (pensPurchasedCount >= TOTAL_PENS) {
+                const hasEnoughMoney = playerMoney >= TREES_COST;
+                return {
+                    canInteract: hasEnoughMoney,
+                    message: hasEnoughMoney ? `Beli Semua Pohon (Biaya: ${TREES_COST})` : `Uang tidak cukup (Butuh: ${TREES_COST})`,
+                    highlightColor: hasEnoughMoney ? '#00ff00' : '#ff0000'
+                };
+            }
+
+            // State 1 (Default): Tawarkan pembelian kandang
             const hasEnoughMoney = playerMoney >= PEN_COST;
             return {
                 canInteract: hasEnoughMoney,
-                message: hasEnoughMoney ? `Beli Kandang (<span class="math-inline">\{pensPurchasedCount \+ 1\}/</span>{TOTAL_PENS}) (Biaya: ${PEN_COST})` : `Uang tidak cukup (Butuh: ${PEN_COST})`,
+                message: hasEnoughMoney ? `Beli Kandang (${pensPurchasedCount + 1}/${TOTAL_PENS}) (Biaya: ${PEN_COST})` : `Uang tidak cukup (Butuh: ${PEN_COST})`,
                 highlightColor: hasEnoughMoney ? '#00ff00' : '#ff0000'
             };
         }
@@ -225,21 +241,6 @@ loader.load('/Lever/lever.glb', function (gltf) {
         });
     }
 
-    function loadPineTree(position) {
-    loader.load('/Building/pine_tree.glb', function (gltf) {
-        const tree = gltf.scene;
-        tree.scale.set(1.5, 1.5, 1.5); // Sesuaikan ukurannya jika perlu
-        tree.position.copy(position);
-
-        // Beri sedikit variasi rotasi agar tidak terlihat seragam
-        tree.rotation.y = Math.random() * Math.PI * 2;
-        
-        scene.add(tree);
-        
-        // Tambahkan pohon ke octree agar pemain tidak bisa menembusnya
-        worldOctree.fromGraphNode(tree);
-    });
-}
 
     // ===================================================================
     // FUNGSI BARU UNTUK MEMBUAT SATU KANDANG YANG DAPAT DIBELI
@@ -476,6 +477,103 @@ function animateLeverPull(leverToAnimate) {
         .yoyo(true)
         .repeat(1)
         .start();
+}
+
+function loadPineTree(position) {
+        loader.load('/Building/pine_tree.glb', function (gltf) {
+            const tree = gltf.scene;
+            tree.scale.set(0.02, 0.02, 0.02); // Sesuaikan ukurannya jika perlu
+            tree.position.copy(position);
+
+            // Beri sedikit variasi rotasi agar tidak terlihat seragam
+            tree.rotation.y = Math.random() * Math.PI * 2;
+            
+            scene.add(tree);
+            
+            // Tambahkan pohon ke octree agar pemain tidak bisa menembusnya
+            worldOctree.fromGraphNode(tree);
+        });
+    }
+
+    function placeTreesProcedurally(count) {
+        // 1. Definisikan area-area yang tidak boleh ditanami pohon
+        // Format: { x, z, width, depth } -> pusat dan ukuran area
+        const noGoZones = [
+            // Area seluruh kandang (grid 3x3 dengan jarak 8, total sekitar 24x24)
+            { x: 0, z: 0, width: 26, depth: 26 }, 
+            
+            // Area bangunan utama (diberi buffer ekstra)
+            { x: -10, z: 10, width: 12, depth: 12 }, 
+            
+            // Area meja dan tuas-tuas (diberi buffer ekstra)
+            { x: 15, z: -5, width: 8, depth: 10 },
+        ];
+
+        const worldBounds = 24; // Batas area tanam, agar tidak terlalu mepet tembok
+        let placedCount = 0;
+        let maxAttempts = count * 20; // Untuk mencegah loop tak terbatas
+
+        for (let i = 0; i < maxAttempts && placedCount < count; i++) {
+            // 2. Hasilkan posisi acak di dalam dunia
+            const randomX = Math.random() * (worldBounds * 2) - worldBounds; // antara -24 dan 24
+            const randomZ = Math.random() * (worldBounds * 2) - worldBounds; // antara -24 dan 24
+
+            let isSafe = true;
+            // 3. Cek apakah posisi acak ini berada di dalam salah satu zona terlarang
+            for (const zone of noGoZones) {
+                const halfW = zone.width / 2;
+                const halfD = zone.depth / 2;
+                if (randomX > zone.x - halfW && randomX < zone.x + halfW &&
+                    randomZ > zone.z - halfD && randomZ < zone.z + halfD) {
+                    isSafe = false;
+                    break; // Jika sudah di dalam satu zona, tak perlu cek zona lain
+                }
+            }
+
+            // 4. Jika posisi aman, tanam pohon di sana
+            if (isSafe) {
+                loadPineTree(new THREE.Vector3(randomX, 0, randomZ));
+                placedCount++;
+            }
+        }
+
+        if (placedCount < count) {
+            console.warn(`Hanya berhasil menanam ${placedCount} dari ${count} pohon.`);
+        }
+    }
+
+function buyAllTrees() {
+    // Cek kondisi pembelian
+    if (areTreesPurchased || playerMoney < TREES_COST) {
+        return;
+    }
+
+    // Proses transaksi
+    playerMoney -= TREES_COST;
+    updateCollectedMoneyDisplay();
+    areTreesPurchased = true;
+
+    // Animasikan tuas
+    animateLeverPull(interactiveObjects.find(o => o.action === handlePenLeverAction)?.model);
+    
+    // Panggil fungsi yang menanam pohon di dunia game
+    placeTreesProcedurally(50); // Angka bisa diubah
+
+    // Beri bonus income karena area sudah bagus
+    currentIncomeRate += 100;
+    updateIncomeRateDisplay();
+}
+
+
+function handlePenLeverAction() {
+    // Fungsi ini bertindak sebagai "pemilih" aksi
+    // Jika semua kandang sudah dibeli, aksi berikutnya adalah membeli pohon
+    if (pensPurchasedCount >= TOTAL_PENS) {
+        buyAllTrees();
+    } else {
+        // Jika belum, aksinya adalah membeli kandang
+        buyNextPen();
+    }
 }
 
 function buyNextPen() {
