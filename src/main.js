@@ -56,12 +56,6 @@ const collectedMoneyDisplay = document.getElementById('collectedMoneyDisplay');
 const incomeRateDisplay = document.getElementById('incomeRateDisplay');
 const leverMessage = document.getElementById('leverMessage');
 
-// Aset & Interaksi
-let knife;
-let mouseTime = 0;
-let isSpinning = false;
-let spinStartTime;
-const spinDuration = 500;
 
 // Sistem Bangunan & Interaksi (Struktur Baru)
 let buildingLevel = 0;
@@ -86,24 +80,6 @@ let activeInteraction = null;
 // =================================================================
 // BAGIAN 3: PEMUATAN ASET
 // =================================================================
-
-// --- Senjata Pemain ---
-loader.load('/Knife/karambit.glb', (gltf) => {
-    knife = gltf.scene;
-    knife.scale.set(0.1, 0.1, 0.1);
-    knife.position.set(0.5, -0.5, -1);
-    knife.rotation.set(4.5, Math.PI, -21);
-    knife.userData.initialPosition = knife.position.clone();
-    knife.userData.initialRotation = knife.rotation.clone();
-    knife.traverse((node) => {
-        if (node.isMesh) {
-            node.renderOrder = 9999;
-            node.material.depthTest = false;
-        }
-    });
-    camera.add(knife);
-    scene.add(camera);
-}, undefined, (error) => console.error('Error loading knife:', error));
 
 // --- Meja & Tuas ---
 loader.load('/Lever/table.glb', function (gltf) {
@@ -586,8 +562,10 @@ function buyNextPen() {
     playerMoney -= PEN_COST;
     updateCollectedMoneyDisplay();
 
-    // Animasikan tuas
-    animateLeverPull(interactiveObjects.find(o => o.action === buyNextPen)?.model);
+    // =======================================================
+    // PERBAIKAN: Gunakan handlePenLeverAction untuk menemukan tuas yang benar
+    // =======================================================
+    animateLeverPull(interactiveObjects.find(o => o.action === handlePenLeverAction)?.model);
 
     // Dapatkan kandang berikutnya dari array dan buat terlihat
     const nextPen = penObjects[pensPurchasedCount];
@@ -651,28 +629,6 @@ function buildBuilding() {
     }
 }
 
-function startSpin() {
-    if (!isSpinning) {
-        isSpinning = true;
-        spinStartTime = performance.now();
-    }
-}
-
-function handleSpin() {
-    if (isSpinning) {
-        const elapsedTime = performance.now() - spinStartTime;
-        if (elapsedTime < spinDuration) {
-            const spinAngle = (elapsedTime / spinDuration) * Math.PI * 2;
-            const twistAngle = Math.sin((elapsedTime / spinDuration) * Math.PI * 4) * 0.2;
-            knife.rotation.y = spinAngle;
-            knife.rotation.z = twistAngle;
-        } else {
-            isSpinning = false;
-            knife.rotation.copy(knife.userData.initialRotation);
-        }
-    }
-}
-
 // =================================================================
 // BAGIAN 5: EVENT LISTENERS
 // =================================================================
@@ -700,7 +656,6 @@ container.addEventListener('click', () => {
 
 document.addEventListener('pointerlockchange', () => {
     if (document.pointerLockElement === document.body) {
-        document.addEventListener('mousedown', (e) => { if (e.button === 0) startSpin(); });
     }
 });
 
@@ -722,8 +677,7 @@ function animate() {
         controls(deltaTime);
         updatePlayer(deltaTime);
         teleportPlayerIfOob();
-    }
-    handleSpin();
+    };
     updateInteractions(); // Satu fungsi untuk semua interaksi
     TWEEN.update();
     renderer.render(scene, camera);
