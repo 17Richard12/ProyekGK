@@ -70,6 +70,7 @@ const buildingTierModels = [
     '/Building/house_valo.glb'
 ];
 let buildings = [];
+let buildLeverModel = null;
 
 // PERUBAHAN: Logika baru untuk manajemen kandang
 let pensPurchasedCount = 0; // Menghitung jumlah kandang yang sudah dibeli
@@ -134,29 +135,37 @@ loader.load('/Lever/lever.glb', function (gltf) {
 // Tuas Pembangunan (Disederhanakan)
 loader.load('/Lever/lever.glb', function (gltf) {
     const buildLever = gltf.scene;
+    
+    // =======================================================
+    // PERUBAHAN: Simpan model tuas ke variabel global
+    // =======================================================
+    buildLeverModel = buildLever;
+
     buildLever.scale.set(1, 1, 1);
     buildLever.rotation.set(0, Math.PI / 2, 0);
-    buildLever.position.set(15, 0.7, -7); // Posisi tetap
+    buildLever.position.set(15, 0.7, -7);
     scene.add(buildLever);
 
-    // Logika kembali ke awal: hanya cek uang dan level maks
+    // Logika interaksi tetap sama
     interactiveObjects.push({
         model: buildLever,
         action: buildBuilding,
         getDetails: () => {
-            if (buildingLevel >= buildingTierCosts.length) {
-                return { canInteract: false, message: 'Bangunan Level Maksimal', highlightColor: '#ffff00' };
+            // Logika ini sekarang hanya akan berjalan sebelum bangunan pertama dibeli
+            if (buildingLevel >= 1) { // Kita anggap hanya ada 1 bangunan yang bisa dibeli
+                return { canInteract: false, message: 'Bangunan sudah dibeli', highlightColor: '#ffff00' };
             }
-            const currentCost = buildingTierCosts[buildingLevel];
+            const currentCost = buildingTierCosts[0]; // Selalu cek biaya bangunan pertama
             const hasEnoughMoney = playerMoney >= currentCost;
             return {
                 canInteract: hasEnoughMoney,
-                message: hasEnoughMoney ? `Upgrade Bangunan (Biaya: ${currentCost})` : `Uang tidak cukup (Butuh: ${currentCost})`,
+                message: hasEnoughMoney ? `Beli Bangunan (Biaya: ${currentCost})` : `Uang tidak cukup (Butuh: ${currentCost})`,
                 highlightColor: hasEnoughMoney ? '#00ff00' : '#ff0000'
             };
         }
     });
 });
+
 // =======================================================
 // BARU: TUAS KHUSUS UNTUK MEMBELI KANDANG
 // =======================================================
@@ -215,6 +224,22 @@ loader.load('/Lever/lever.glb', function (gltf) {
             worldOctree.fromGraphNode(fence);
         });
     }
+
+    function loadPineTree(position) {
+    loader.load('/Building/pine_tree.glb', function (gltf) {
+        const tree = gltf.scene;
+        tree.scale.set(1.5, 1.5, 1.5); // Sesuaikan ukurannya jika perlu
+        tree.position.copy(position);
+
+        // Beri sedikit variasi rotasi agar tidak terlihat seragam
+        tree.rotation.y = Math.random() * Math.PI * 2;
+        
+        scene.add(tree);
+        
+        // Tambahkan pohon ke octree agar pemain tidak bisa menembusnya
+        worldOctree.fromGraphNode(tree);
+    });
+}
 
     // ===================================================================
     // FUNGSI BARU UNTUK MEMBUAT SATU KANDANG YANG DAPAT DIBELI
@@ -480,18 +505,18 @@ function buyNextPen() {
     updateIncomeRateDisplay();
 }
 
-// UBAH FUNGSI buildBuilding() MENJADI SEPERTI INI
+// Ganti fungsi buildBuilding() Anda dengan yang ini
 function buildBuilding() {
+    // Kita hanya izinkan build jika level masih 0
+    if (buildingLevel >= 1) return;
+
     const cost = buildingTierCosts[buildingLevel];
-    if (buildingLevel < buildingTierCosts.length && playerMoney >= cost) {
+    if (playerMoney >= cost) {
         playerMoney -= cost;
         updateCollectedMoneyDisplay();
-        animateLeverPull(interactiveObjects.find(o => o.action === buildBuilding)?.model);
+        animateLeverPull(buildLeverModel); // Langsung gunakan referensi model
 
-        // Ganti model bangunan seperti sebelumnya
-        if (buildingLevel > 0 && buildings[buildingLevel - 1]) {
-            buildings[buildingLevel - 1].visible = false;
-        }
+        // Memuat model bangunan
         loader.load(buildingTierModels[buildingLevel], (gltf) => {
             const newBuilding = gltf.scene;
             newBuilding.position.set(-10, 0, 10);
@@ -501,14 +526,30 @@ function buildBuilding() {
             buildings[buildingLevel] = newBuilding;
         });
 
-        // Update pendapatan berdasarkan level bangunan
-        // Kita hitung ulang agar pendapatan dari kandang tetap ada
+        // Update pendapatan
         const baseIncome = incomeRatePerBuilding[buildingLevel + 1] || incomeRatePerBuilding[incomeRatePerBuilding.length - 1];
         const penIncome = pensPurchasedCount * incomePerPen;
         currentIncomeRate = baseIncome + penIncome;
-
-        buildingLevel++;
         updateIncomeRateDisplay();
+        
+        // Naikkan level agar tidak bisa build lagi
+        buildingLevel++;
+
+        // =======================================================
+        // LOGIKA BARU: HILANGKAN TUAS SETELAH PEMBELIAN
+        // =======================================================
+        
+        // 1. Sembunyikan model 3D tuas dari scene
+        if (buildLeverModel) {
+            buildLeverModel.visible = false;
+        }
+
+        // 2. Hapus tuas dari daftar objek yang bisa diinteraksikan
+        interactiveObjects = interactiveObjects.filter(obj => obj.action !== buildBuilding);
+
+        // 3. Pastikan pesan interaksi juga hilang
+        activeInteraction = null;
+        leverMessage.style.display = 'none';
     }
 }
 
