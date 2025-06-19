@@ -15,7 +15,10 @@ const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerH
 camera.rotation.order = 'YXZ';
 
 const container = document.getElementById('container');
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    powerPreference: 'high-performance'
+});
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
@@ -69,6 +72,7 @@ let buildings = [];
 // Objek interaktif akan dikelola di sini
 let interactiveObjects = [];
 let activeInteraction = null;
+let animalMixers = [];
 
 // =================================================================
 // BAGIAN 3: PEMUATAN ASET
@@ -147,20 +151,48 @@ loader.load('/Lever/lever.glb', function (gltf) {
     });
 });
 
+// Panggil fungsi baru untuk menempatkan semua kandang
+loadAndPlaceInstances('/Building/jail_cage.glb', cagePositions, new THREE.Vector3(1.5, 1.5, 1.5));
+// --- Data Kandang ---
+const cagePositions = [
+    new THREE.Vector3(5, 0, 15), new THREE.Vector3(10, 0, 15), new THREE.Vector3(15, 0, 15),
+    new THREE.Vector3(5, 0, 10), new THREE.Vector3(10, 0, 10), new THREE.Vector3(15, 0, 10),
+    new THREE.Vector3(5, 0, 5),  new THREE.Vector3(10, 0, 5),  new THREE.Vector3(15, 0, 5)
+];
+
+// --- Data Hewan ---
+const animalData = [
+    { path: '/Animals/african_buffalo.glb', position: new THREE.Vector3(0, 0, 0) },
+    // { path: '/Animals/elephantff.glb', position: new THREE.Vector3(5, 0, 2) },
+    // { path: '/Animals/giraffe.glb', position: new THREE.Vector3(-5, 0, -2) },
+    // { path: '/Animals/gorilla.glb', position: new THREE.Vector3(8, 0, 8) },
+    // { path: '/Animals/hippopotamus.glb', position: new THREE.Vector3(-8, 0, -8) },
+    // { path: '/Animals/lion_lowpoly1.glb', position: new THREE.Vector3(3, 0, -10) },
+    // { path: '/Animals/polar_bear.glb', position: new THREE.Vector3(-3, 0, 10) },
+    // { path: '/Animals/rhinoceros.glb', position: new THREE.Vector3(12, 0, -12) },
+    // { path: '/Animals/zebra.glb', position: new THREE.Vector3(-12, 0, 12) },
+];
+
+animalData.forEach(data => {
+    loadAndAnimateAnimal(data.path, data.position);
+});
+
 // --- Dinding, Lantai, Latar Belakang & Cahaya ---
 (function setupWorld() {
-    function loadWall(position, rotationY = 0) {
-        loader.load('/Wall/longwall.glb', function (gltf) {
-            const wall = gltf.scene;
-            wall.scale.set(2, 2, 2);
-            wall.rotation.y = rotationY;
-            wall.position.copy(position);
-            scene.add(wall);
-            worldOctree.fromGraphNode(wall);
-        });
-    }
-    const wallPositions = [ { pos: new THREE.Vector3(-10, 0, -24.7) }, { pos: new THREE.Vector3(-24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-24.3, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-10, 0, 25) }, { pos: new THREE.Vector3(24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(24.7, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(8, 0, -24.7) }, { pos: new THREE.Vector3(8, 0, 25) }];
-    wallPositions.forEach(w => loadWall(w.pos, w.rot));
+    // Definisikan posisi dinding
+    const wallPositions = [
+        // Dinding belakang
+        new THREE.Vector3(-15, 0, -24.7), new THREE.Vector3(0, 0, -24.7), new THREE.Vector3(15, 0, -24.7),
+        // Dinding depan
+        new THREE.Vector3(-15, 0, 24.7), new THREE.Vector3(0, 0, 24.7), new THREE.Vector3(15, 0, 24.7),
+        // Dinding kiri
+        new THREE.Vector3(-24.7, 0, -15), new THREE.Vector3(-24.7, 0, 0), new THREE.Vector3(-24.7, 0, 15),
+        // Dinding kanan
+        new THREE.Vector3(24.7, 0, -15), new THREE.Vector3(24.7, 0, 0), new THREE.Vector3(24.7, 0, 15)
+    ];
+
+    // Panggil fungsi instancing untuk dinding
+    loadAndPlaceInstances('/Wall/longwall.glb', wallPositions, new THREE.Vector3(2, 2, 2));
 
     const floorGeometry = new THREE.PlaneGeometry(50, 50);
     const floorTexture = new THREE.TextureLoader().load('/Floor/grass.jpg', (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(5, 5); });
@@ -168,6 +200,7 @@ loader.load('/Lever/lever.glb', function (gltf) {
     const floorMesh = new THREE.Mesh(floorGeometry, floorMaterial);
     floorMesh.rotation.x = -Math.PI / 2;
     floorMesh.receiveShadow = true;
+    floorMesh.castShadow = false;
     scene.add(floorMesh);
     worldOctree.fromGraphNode(floorMesh);
 
@@ -341,6 +374,32 @@ function buildBuilding() {
     }
 }
 
+// Fungsi baru untuk memuat 1 model dan menempatkannya di banyak posisi
+function loadAndPlaceInstances(modelPath, positions, scale = new THREE.Vector3(1, 1, 1)) {
+    loader.load(modelPath, (gltf) => {
+        const sourceObject = gltf.scene.children[0];
+        
+        // Pastikan kita mendapatkan Mesh, bukan Object3D kosong
+        if (sourceObject && sourceObject.isMesh) {
+            const geometry = sourceObject.geometry;
+            const material = sourceObject.material;
+
+            positions.forEach(pos => {
+                const instance = new THREE.Mesh(geometry, material);
+                instance.scale.copy(scale);
+                instance.position.copy(pos);
+
+                // --- OPTIMISASI BAYANGAN (dibahas di Bagian B) ---
+                instance.castShadow = true;
+                instance.receiveShadow = true;
+
+                scene.add(instance);
+                worldOctree.fromGraphNode(instance);
+            });
+        }
+    });
+}
+
 function startSpin() {
     if (!isSpinning) {
         isSpinning = true;
@@ -361,6 +420,33 @@ function handleSpin() {
             knife.rotation.copy(knife.userData.initialRotation);
         }
     }
+}
+
+// Di dalam BAGIAN 4
+
+function loadAndAnimateAnimal(path, position) {
+    loader.load(path, (gltf) => {
+        const animal = gltf.scene;
+        animal.position.copy(position);
+        
+        // Sesuaikan skala jika perlu, misalnya:
+        // animal.scale.set(0.5, 0.5, 0.5);
+        
+        scene.add(animal);
+
+        // Cek apakah model punya animasi
+        if (gltf.animations && gltf.animations.length) {
+            // Buat AnimationMixer untuk hewan ini
+            const mixer = new THREE.AnimationMixer(animal);
+            
+            // Ambil animasi pertama (biasanya idle animation)
+            const action = mixer.clipAction(gltf.animations[0]);
+            action.play();
+            
+            // Simpan mixer ke dalam array agar bisa di-update di loop utama
+            animalMixers.push(mixer);
+        }
+    }, undefined, (error) => console.error(`Error loading animal: ${path}`, error));
 }
 
 // =================================================================
@@ -408,7 +494,13 @@ function animate() {
         teleportPlayerIfOob();
     }
     handleSpin();
-    updateInteractions(); // Satu fungsi untuk semua interaksi
+    updateInteractions(); 
+    
+    for (const mixer of animalMixers) {
+        mixer.update(deltaTime);
+    }
+    
+    // Satu fungsi untuk semua interaksi
     TWEEN.update();
     renderer.render(scene, camera);
 }
