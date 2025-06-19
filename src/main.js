@@ -56,6 +56,16 @@ const collectedMoneyDisplay = document.getElementById('collectedMoneyDisplay');
 const incomeRateDisplay = document.getElementById('incomeRateDisplay');
 const leverMessage = document.getElementById('leverMessage');
 
+const GORILLA_SETTINGS = {
+    // Ubah angka-angka ini untuk menyesuaikan posisi gorila
+    // offsetX: positif (kanan), negatif (kiri)
+    // offsetY: positif (atas), negatif (bawah)
+    // offsetZ: positif (mundur), negatif (maju)
+    offsetX: -4,
+    offsetY: 0,
+    offsetZ: 17,
+    scale: 200 // Ubah ini untuk ukuran gorila
+};
 
 // Sistem Bangunan & Interaksi (Struktur Baru)
 let buildingLevel = 0;
@@ -519,39 +529,38 @@ function loadPineTree(position) {
         }
     }
 
-    // Ganti seluruh fungsi ini di BAGIAN 4
+// Ganti seluruh fungsi ini di BAGIAN 4
 
 function loadGorilla(position) {
-    console.log("MEMUAT GORILA di posisi:", position);
+    // Pastikan path ke file gorilla.glb Anda sudah benar
     loader.load('/Animal/gorilla.glb', (gltf) => {
         const gorilla = gltf.scene;
         
         // =======================================================
-        // PERBAIKAN: Logika baru untuk menengahkan model secara otomatis
+        // PERBAIKAN: Gunakan posisi kandang + offset manual dari GORILLA_SETTINGS
         // =======================================================
-
-        // 1. Hitung "bounding box" (kotak tak terlihat yang mengelilingi model)
-        const box = new THREE.Box3().setFromObject(gorilla);
         
-        // 2. Dapatkan titik tengah dari kotak tersebut
-        const center = box.getCenter(new THREE.Vector3());
+        // 1. Terapkan skala dari setting
+        const scale = GORILLA_SETTINGS.scale;
+        gorilla.scale.set(scale, scale, scale);
 
-        // 3. Pindahkan model sejauh negatif dari pusatnya.
-        // Ini akan membuat pusat geometris model berada di titik origin (0,0,0)
-        gorilla.position.sub(center); 
-        
-        // 4. SEKARANG baru pindahkan model ke posisi kandang yang benar
-        gorilla.position.add(position);
+        // 2. Buat posisi akhir dengan menambahkan offset
+        const finalPosition = position.clone().add(
+            new THREE.Vector3(
+                GORILLA_SETTINGS.offsetX,
+                GORILLA_SETTINGS.offsetY,
+                GORILLA_SETTINGS.offsetZ
+            )
+        );
 
-        // Atur skala (Anda mungkin perlu menyesuaikan ini lagi)
-        gorilla.scale.set(200, 200, 200);
+        // 3. Terapkan posisi akhir ke gorila
+        gorilla.position.copy(finalPosition);
         
         scene.add(gorilla);
         worldOctree.fromGraphNode(gorilla);
 
         // --- Bagian Animasi (tidak berubah) ---
         const mixer = new THREE.AnimationMixer(gorilla);
-        console.log(`Animasi ditemukan di gorilla.glb:`, gltf.animations);
         const clip = gltf.animations[0]; 
         if (clip) {
             const action = mixer.clipAction(clip);
@@ -561,7 +570,6 @@ function loadGorilla(position) {
 
     }, undefined, (error) => console.error('Gagal memuat gorila:', error));
 }
-
 function buyAllTrees() {
     // Cek kondisi pembelian
     if (areTreesPurchased || playerMoney < TREES_COST) {
