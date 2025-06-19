@@ -455,12 +455,12 @@ function updateInteractions() {
 
 function animateLeverPull(leverToAnimate) {
     if (!leverToAnimate || TWEEN.getAll().length > 0) return;
-    const startRotation = { x: leverToAnimate.rotation.x };
-    const endRotation = { x: leverToAnimate.rotation.x + Math.PI / 4 };
+    const startRotation = { y: leverToAnimate.rotation.y };
+    const endRotation = { y: leverToAnimate.rotation.y + Math.PI / 4 };
     new TWEEN.Tween(startRotation)
         .to(endRotation, 200)
         .easing(TWEEN.Easing.Quadratic.InOut)
-        .onUpdate(() => { leverToAnimate.rotation.x = startRotation.x; })
+        .onUpdate(() => { leverToAnimate.rotation.y = startRotation.y; })
         .yoyo(true)
         .repeat(1)
         .start();
