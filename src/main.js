@@ -44,7 +44,11 @@ const keyStates = {};
 let playerMoney = 0;
 let uncollectedMoney = 0;
 let currentIncomeRate = 10;
-const incomeRatesByLevel = [10, 25, 75, 200];
+// PERUBAHAN: Rate dasar + rate per bangunan + rate per kandang akan kita kelola
+const incomeRatePerBuilding = [10, 25, 75, 200]; 
+const incomePerPen = 5; // Setiap kandang yang dibeli menambah +5 income
+const PEN_COST = 250; // Menetapkan harga per kandang
+
 const uncollectedMoneyDisplay = document.getElementById('uncollectedMoneyDisplay');
 const collectedMoneyDisplay = document.getElementById('collectedMoneyDisplay');
 const incomeRateDisplay = document.getElementById('incomeRateDisplay');
@@ -66,6 +70,11 @@ const buildingTierModels = [
     '/Building/house_valo.glb'
 ];
 let buildings = [];
+
+// PERUBAHAN: Logika baru untuk manajemen kandang
+let pensPurchasedCount = 0; // Menghitung jumlah kandang yang sudah dibeli
+const TOTAL_PENS = 9;
+let penObjects = []; // Hanya untuk menyimpan model kandang
 
 // Objek interaktif akan dikelola di sini
 let interactiveObjects = [];
@@ -122,26 +131,53 @@ loader.load('/Lever/lever.glb', function (gltf) {
     });
 });
 
-// Tuas Pembangunan
+// Tuas Pembangunan (Disederhanakan)
 loader.load('/Lever/lever.glb', function (gltf) {
     const buildLever = gltf.scene;
     buildLever.scale.set(1, 1, 1);
     buildLever.rotation.set(0, Math.PI / 2, 0);
-    buildLever.position.set(15, 0.7, -7);
+    buildLever.position.set(15, 0.7, -7); // Posisi tetap
     scene.add(buildLever);
-    // Tambahkan ke sistem interaksi
+
+    // Logika kembali ke awal: hanya cek uang dan level maks
     interactiveObjects.push({
         model: buildLever,
         action: buildBuilding,
         getDetails: () => {
             if (buildingLevel >= buildingTierCosts.length) {
-                return { canInteract: false, message: 'Level Maksimal', highlightColor: '#ffff00' };
+                return { canInteract: false, message: 'Bangunan Level Maksimal', highlightColor: '#ffff00' };
             }
             const currentCost = buildingTierCosts[buildingLevel];
             const hasEnoughMoney = playerMoney >= currentCost;
             return {
                 canInteract: hasEnoughMoney,
-                message: hasEnoughMoney ? `Upgrade ke Lv. ${buildingLevel + 1} (Biaya: ${currentCost})` : `Uang tidak cukup (Butuh: ${currentCost})`,
+                message: hasEnoughMoney ? `Upgrade Bangunan (Biaya: ${currentCost})` : `Uang tidak cukup (Butuh: ${currentCost})`,
+                highlightColor: hasEnoughMoney ? '#00ff00' : '#ff0000'
+            };
+        }
+    });
+});
+// =======================================================
+// BARU: TUAS KHUSUS UNTUK MEMBELI KANDANG
+// =======================================================
+loader.load('/Lever/lever.glb', function (gltf) {
+    const penLever = gltf.scene;
+    penLever.scale.set(1, 1, 1);
+    penLever.rotation.set(0, Math.PI / 2, 0);
+    penLever.position.set(15, 0.7, -5); // Posisi di tengah
+    scene.add(penLever);
+
+    interactiveObjects.push({
+        model: penLever,
+        action: buyNextPen, // Fungsi baru yang akan kita buat
+        getDetails: () => {
+            if (pensPurchasedCount >= TOTAL_PENS) {
+                return { canInteract: false, message: 'Semua Kandang Telah Dibeli', highlightColor: '#ffff00' };
+            }
+            const hasEnoughMoney = playerMoney >= PEN_COST;
+            return {
+                canInteract: hasEnoughMoney,
+                message: hasEnoughMoney ? `Beli Kandang (<span class="math-inline">\{pensPurchasedCount \+ 1\}/</span>{TOTAL_PENS}) (Biaya: ${PEN_COST})` : `Uang tidak cukup (Butuh: ${PEN_COST})`,
                 highlightColor: hasEnoughMoney ? '#00ff00' : '#ff0000'
             };
         }
@@ -149,12 +185,8 @@ loader.load('/Lever/lever.glb', function (gltf) {
 });
 
 // --- Dinding, Lantai, Latar Belakang & Cahaya ---
-// Ganti seluruh fungsi setupWorld() Anda dengan yang ini
-
-// --- Dinding, Lantai, Latar Belakang & Cahaya ---
-// Ganti seluruh fungsi setupWorld() Anda dengan yang ini
 (function setupWorld() {
-    // --- FUNGSI UNTUK MEMUAT DINDING ---
+    // --- FUNGSI UNTUK MEMUAT DINDING (tidak berubah) ---
     function loadWall(position, rotationY = 0) {
         loader.load('/Wall/longwall.glb', function (gltf) {
             const wall = gltf.scene;
@@ -166,70 +198,86 @@ loader.load('/Lever/lever.glb', function (gltf) {
         });
     }
 
-    // --- FUNGSI UNTUK MEMUAT 1 SEGMEN PAGAR ---
-    function loadFence(position, rotationY = 0) {
+    // ===================================================================
+    // PERUBAHAN: FUNGSI MEMUAT PAGAR AGAR BISA DIGABUNG DALAM GRUP
+    // ===================================================================
+    function loadFence(position, rotationY = 0, parentGroup) {
         loader.load('/Wall/low_poly_wood_fence_with_snow.glb', function (gltf) {
             const fence = gltf.scene;
-            fence.scale.set(1.5, 1.5, 1.5); 
+            fence.scale.set(1.5, 1.5, 1.5);
             fence.rotation.y = rotationY;
             fence.position.copy(position);
-            scene.add(fence);
+            
+            // Tambahkan ke grup, bukan langsung ke scene
+            parentGroup.add(fence);
+            
+            // Tambahkan collision untuk setiap bagian pagar
             worldOctree.fromGraphNode(fence);
         });
     }
 
     // ===================================================================
-    // FUNGSI BARU UNTUK MEMBUAT SATU KANDANG HEWAN (MENGGUNAKAN LOGIKA ANDA)
+    // FUNGSI BARU UNTUK MEMBUAT SATU KANDANG YANG DAPAT DIBELI
     // ===================================================================
-    function createPenWithYourLogic(centerPosition) {
-        // Menggunakan nilai dan logika persis seperti di kode Anda
+    function createBuyablePen(centerPosition, penIndex) {
+        const penGroup = new THREE.Group();
+        penGroup.userData.isPen = true;
+        penGroup.userData.penIndex = penIndex;
+
+        penGroup.visible = false; 
+        
+        scene.add(penGroup);
+        
+        // =======================================================
+        // PERBAIKAN: Hapus baris di bawah ini. Variabel 'penStates' sudah tidak ada.
+        // penStates[penIndex] = { isBought: false }; <-- HAPUS BARIS INI
+        // =======================================================
+        
+        // Simpan model kandang ke dalam array penObjects
+        penObjects[penIndex] = penGroup;
+
+        // Logika pembuatan pagar (sama seperti sebelumnya, tidak perlu diubah)
         const fenceLength = 2.05;
         const fencesPerSide = 2;
         const sideLength = fencesPerSide * fenceLength;
         const halfSideLength = sideLength / 2;
-
-        // Semua posisi dihitung relatif terhadap centerPosition
-        const cX = centerPosition.x;
         const cY = centerPosition.y;
-        const cZ = centerPosition.z;
+        const relativeCenter = new THREE.Vector3(0, 0, 0);
 
-        // --- Sisi Depan (Z negatif) ---
-        loadFence(new THREE.Vector3(cX - halfSideLength + (fenceLength / 2), cY, cZ - halfSideLength), Math.PI / 2);
-        loadFence(new THREE.Vector3(cX - halfSideLength + (fenceLength * 1.5), cY, cZ - halfSideLength), (3 * Math.PI) / 2);
-
-        // --- Sisi Belakang (Z positif) ---
-        loadFence(new THREE.Vector3(cX - halfSideLength + (fenceLength / 2), cY, cZ + halfSideLength), Math.PI / 2);
-        loadFence(new THREE.Vector3(cX - halfSideLength + (fenceLength * 1.5), cY, cZ + halfSideLength), (3 * Math.PI) / 2);
-
-        // --- Sisi Kiri (X negatif) ---
-        loadFence(new THREE.Vector3(cX - halfSideLength, cY, cZ - halfSideLength + (fenceLength / 2)), 2 * Math.PI);
-        loadFence(new THREE.Vector3(cX - halfSideLength, cY, cZ - halfSideLength + (fenceLength * 1.5)), Math.PI);
-
-        // --- Sisi Kanan (X positif) ---
-        loadFence(new THREE.Vector3(cX + halfSideLength, cY, cZ - halfSideLength + (fenceLength / 2)), 2 * Math.PI);
-        loadFence(new THREE.Vector3(cX + halfSideLength, cY, cZ - halfSideLength + (fenceLength * 1.5)), Math.PI);
+        loadFence(new THREE.Vector3(relativeCenter.x - halfSideLength + (fenceLength / 2), cY, relativeCenter.z - halfSideLength), Math.PI / 2, penGroup);
+        loadFence(new THREE.Vector3(relativeCenter.x - halfSideLength + (fenceLength * 1.5), cY, relativeCenter.z - halfSideLength), (3 * Math.PI) / 2, penGroup);
+        loadFence(new THREE.Vector3(relativeCenter.x - halfSideLength + (fenceLength / 2), cY, relativeCenter.z + halfSideLength), Math.PI / 2, penGroup);
+        loadFence(new THREE.Vector3(relativeCenter.x - halfSideLength + (fenceLength * 1.5), cY, relativeCenter.z + halfSideLength), (3 * Math.PI) / 2, penGroup);
+        loadFence(new THREE.Vector3(relativeCenter.x - halfSideLength, cY, relativeCenter.z - halfSideLength + (fenceLength / 2)), 2 * Math.PI, penGroup);
+        loadFence(new THREE.Vector3(relativeCenter.x - halfSideLength, cY, relativeCenter.z - halfSideLength + (fenceLength * 1.5)), Math.PI, penGroup);
+        loadFence(new THREE.Vector3(relativeCenter.x + halfSideLength, cY, relativeCenter.z - halfSideLength + (fenceLength / 2)), 2 * Math.PI, penGroup);
+        loadFence(new THREE.Vector3(relativeCenter.x + halfSideLength, cY, relativeCenter.z - halfSideLength + (fenceLength * 1.5)), Math.PI, penGroup);
+        
+        penGroup.position.copy(centerPosition);
     }
-
-    // --- MEMUAT DINDING ---
+    
+    // --- MEMUAT DINDING (tidak berubah) ---
     const wallPositions = [ { pos: new THREE.Vector3(-10, 0, -24.7) }, { pos: new THREE.Vector3(-24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-24.3, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-10, 0, 25) }, { pos: new THREE.Vector3(24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(24.7, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(8, 0, -24.7) }, { pos: new THREE.Vector3(8, 0, 25) }];
     wallPositions.forEach(w => loadWall(w.pos, w.rot));
-    
+
     // ===================================================================
-    // LOGIKA UNTUK MEMBUAT 9 KANDANG DALAM GRID 3x3
+    // LOGIKA BARU UNTUK MEMBUAT 9 KANDANG YANG BISA DIBELI
     // ===================================================================
     const gridRows = 3;
     const gridCols = 3;
-    const gridSpacing = 8; // Jarak antar kandang
+    const gridSpacing = 8;
+    let penCounter = 0;
 
     for (let i = 0; i < gridRows; i++) {
         for (let j = 0; j < gridCols; j++) {
-            const x = (i - 1) * gridSpacing; 
-            const z = (j - 1) * gridSpacing; 
-            createPenWithYourLogic(new THREE.Vector3(x, 0, z));
+            const x = (i - 1) * gridSpacing;
+            const z = (j - 1) * gridSpacing;
+            createBuyablePen(new THREE.Vector3(x, 0, z), penCounter);
+            penCounter++;
         }
     }
 
-    // --- MEMUAT LANTAI, BACKGROUND, DAN CAHAYA ---
+    // --- MEMUAT LANTAI, BACKGROUND, DAN CAHAYA (tidak berubah) ---
     const floorGeometry = new THREE.PlaneGeometry(50, 50);
     const floorTexture = new THREE.TextureLoader().load('/Floor/grass.jpg', (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(5, 5); });
     const floorMaterial = new THREE.MeshPhongMaterial({ map: floorTexture });
@@ -338,43 +386,59 @@ function highlightObject(object, highlight, color = 0x000000) {
 function updateInteractions() {
     const playerPosition = new THREE.Vector3();
     playerCollider.getCenter(playerPosition);
-    let closestObject = null;
-    let minDistance = 3; // Jarak interaksi maksimal
 
-    // Temukan objek interaktif terdekat
+    let closestInteractiveObject = null;
+    let closestDistance = Infinity;
+
+    // 1. Temukan semua objek yang berada dalam jangkauan
+    const nearbyObjects = [];
     for (const obj of interactiveObjects) {
         if (!obj.model) continue;
+
         const objPosition = new THREE.Vector3();
         obj.model.getWorldPosition(objPosition);
         const distance = playerPosition.distanceTo(objPosition);
-        if (distance < minDistance) {
-            minDistance = distance;
-            closestObject = obj;
+        
+        // Gunakan radius interaksi khusus per objek, atau default 3
+        const interactionRadius = obj.interactionRadius || 3; 
+
+        if (distance < interactionRadius) {
+            nearbyObjects.push({ object: obj, distance: distance });
         }
     }
 
-    // Proses interaksi untuk objek terdekat, nonaktifkan yang lain
+    // 2. Dari yang terjangkau, temukan yang paling dekat
+    if (nearbyObjects.length > 0) {
+        nearbyObjects.sort((a, b) => a.distance - b.distance);
+        closestInteractiveObject = nearbyObjects[0].object;
+    }
+
+    // 3. Proses interaksi untuk objek terdekat, nonaktifkan yang lain
     activeInteraction = null;
+    let somethingIsHighlighted = false;
     for (const obj of interactiveObjects) {
-        if (obj === closestObject) {
+        if (obj === closestInteractiveObject) {
             const details = obj.getDetails();
+            highlightObject(obj.model, true, details.highlightColor);
+            
+            // Hanya set activeInteraction jika bisa di-klik
             if (details.canInteract) {
                 activeInteraction = obj;
-                highlightObject(obj.model, true, details.highlightColor);
-            } else {
-                 highlightObject(obj.model, true, details.highlightColor); // Tetap highlight tapi tidak bisa di-klik
             }
+
             leverMessage.innerText = details.message;
             leverMessage.style.display = 'block';
+            somethingIsHighlighted = true;
         } else {
             highlightObject(obj.model, false);
         }
     }
     
-    if (!closestObject) {
+    if (!somethingIsHighlighted) {
         leverMessage.style.display = 'none';
     }
 }
+
 
 function animateLeverPull(leverToAnimate) {
     if (!leverToAnimate || TWEEN.getAll().length > 0) return;
@@ -389,22 +453,61 @@ function animateLeverPull(leverToAnimate) {
         .start();
 }
 
+function buyNextPen() {
+    // Cek apakah semua kandang sudah dibeli atau uang tidak cukup
+    if (pensPurchasedCount >= TOTAL_PENS || playerMoney < PEN_COST) {
+        return;
+    }
+
+    // Kurangi uang pemain
+    playerMoney -= PEN_COST;
+    updateCollectedMoneyDisplay();
+
+    // Animasikan tuas
+    animateLeverPull(interactiveObjects.find(o => o.action === buyNextPen)?.model);
+
+    // Dapatkan kandang berikutnya dari array dan buat terlihat
+    const nextPen = penObjects[pensPurchasedCount];
+    if (nextPen) {
+        nextPen.visible = true;
+    }
+
+    // Tambah jumlah kandang yang dibeli
+    pensPurchasedCount++;
+    
+    // Tingkatkan pendapatan pemain dan perbarui tampilan
+    currentIncomeRate += incomePerPen;
+    updateIncomeRateDisplay();
+}
+
+// UBAH FUNGSI buildBuilding() MENJADI SEPERTI INI
 function buildBuilding() {
     const cost = buildingTierCosts[buildingLevel];
     if (buildingLevel < buildingTierCosts.length && playerMoney >= cost) {
         playerMoney -= cost;
         updateCollectedMoneyDisplay();
-        if (buildingLevel > 0 && buildings[buildingLevel - 1]) buildings[buildingLevel - 1].visible = false;
+        animateLeverPull(interactiveObjects.find(o => o.action === buildBuilding)?.model);
+
+        // Ganti model bangunan seperti sebelumnya
+        if (buildingLevel > 0 && buildings[buildingLevel - 1]) {
+            buildings[buildingLevel - 1].visible = false;
+        }
         loader.load(buildingTierModels[buildingLevel], (gltf) => {
             const newBuilding = gltf.scene;
-            newBuilding.position.set(-5, 0, 5);
+            newBuilding.position.set(-10, 0, 10);
             newBuilding.scale.set(2, 2, 2);
             scene.add(newBuilding);
             worldOctree.fromGraphNode(newBuilding);
             buildings[buildingLevel] = newBuilding;
         });
+
+        // Update pendapatan berdasarkan level bangunan
+        // Kita hitung ulang agar pendapatan dari kandang tetap ada
+        const baseIncome = incomeRatePerBuilding[buildingLevel + 1] || incomeRatePerBuilding[incomeRatePerBuilding.length - 1];
+        const penIncome = pensPurchasedCount * incomePerPen;
+        currentIncomeRate = baseIncome + penIncome;
+
         buildingLevel++;
-        currentIncomeRate = incomeRatesByLevel[buildingLevel] || incomeRatesByLevel[incomeRatesByLevel.length - 1];
         updateIncomeRateDisplay();
     }
 }
