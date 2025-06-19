@@ -1,4 +1,4 @@
-// main.js - Versi Final dengan Debugging dan Penyesuaian
+// main.js - Versi Lebih Rapi dan Terstruktur
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -45,25 +45,20 @@ let playerMoney = 0;
 let uncollectedMoney = 0;
 let currentIncomeRate = 10;
 const incomeRatePerBuilding = [10, 25, 75, 200];
-const incomePerPen = 5;
-const PEN_COST = 50;
+const incomePerPen = 5; // Setiap kandang yang dibeli menambah +5 income
+const incomePerAnimal = 10; // Setiap hewan yang dibeli menambah +10 income
+const PEN_COST = 50; // Menetapkan harga per kandang
+const ANIMAL_COST = 75; // Menetapkan harga per hewan
 const TREES_COST = 1000;
 let areTreesPurchased = false;
-const INCOME_PER_ANIMAL = 50;
 
 const uncollectedMoneyDisplay = document.getElementById('uncollectedMoneyDisplay');
 const collectedMoneyDisplay = document.getElementById('collectedMoneyDisplay');
 const incomeRateDisplay = document.getElementById('incomeRateDisplay');
 const leverMessage = document.getElementById('leverMessage');
 
-// Aset & Interaksi
-let knife;
-let mouseTime = 0;
-let isSpinning = false;
-let spinStartTime;
-const spinDuration = 500;
 
-// Sistem Bangunan & Interaksi (Struktur Baru)
+// Sistem Bangunan & Interaksi
 let buildingLevel = 0;
 const buildingTierCosts = [100, 500, 1500];
 const buildingTierModels = [
@@ -74,53 +69,22 @@ const buildingTierModels = [
 let buildings = [];
 let buildLeverModel = null;
 
-// Logika baru untuk manajemen kandang
+// Logika manajemen kandang & hewan
 let pensPurchasedCount = 0;
 const TOTAL_PENS = 9;
-let penObjects = []; // Array untuk menyimpan grup kandang (termasuk pagarnya)
+let penObjects = []; // Menyimpan grup 3D untuk setiap kandang
 
-// Logika untuk manajemen hewan
 let animalsPurchasedCount = 0;
-const ANIMAL_COST = 200;
+const TOTAL_ANIMALS = 9; // Total hewan yang bisa dibeli (satu per kandang)
+let animalObjects = []; // Menyimpan model 3D untuk setiap hewan
 
-// Data hewan yang tersedia (sesuai dengan file Anda)
-// PENTING: Sesuaikan nilai 'scale' dan 'offsetY' ini agar hewan terlihat proporsional
-// Saya telah meningkatkan skalanya sebagai tebakan awal.
-const animalData = [
-    { name: 'African Buffalo', model: '/Animal/african_buffalo.glb', scale: 0.02, offsetY: 0.5 },
-    { name: 'Elephant', model: '/Animal/elephantff.glb', scale: 0.025, offsetY: 0.5 },
-    { name: 'Giraffe', model: '/Animal/giraffe.glb', scale: 0.02, offsetY: 0.5 },
-    { name: 'Gorilla', model: '/Animal/gorilla.glb', scale: 0.02, offsetY: 0.5 },
-    { name: 'Hippopotamus', model: '/Animal/hippopotamus.glb', scale: 0.02, offsetY: 0.5 },
-    { name: 'Lion', model: '/Animal/lion_lowpoly1.glb', scale: 0.02, offsetY: 0.5 },
-    { name: 'Polar Bear', model: '/Animal/polar_bear.glb', scale: 0.02, offsetY: 0.5 },
-    { name: 'Rhinoceros', model: '/Animal/rhinoceros.glb', scale: 0.02, offsetY: 0.5 },
-    { name: 'Zebra', model: '/Animal/zebra.glb', scale: 0.02, offsetY: 0.5 },
-];
-let currentAnimalIndexToBuy = 0;
-
+// Objek interaktif
 let interactiveObjects = [];
 let activeInteraction = null;
 
 // =================================================================
 // BAGIAN 3: PEMUATAN ASET
 // =================================================================
-
-// --- Senjata Pemain ---
-loader.load('/Knife/karambit.glb', (gltf) => {
-    knife = gltf.scene;
-    knife.scale.set(0.1, 0.1, 0.1);
-    knife.position.set(0.5, -0.5, -1);
-    knife.rotation.set(4.5, Math.PI, -21);
-    knife.traverse((node) => {
-        if (node.isMesh) {
-            node.renderOrder = 9999;
-            node.material.depthTest = false;
-        }
-    });
-    camera.add(knife);
-    scene.add(camera);
-}, undefined, (error) => console.error('Error loading knife:', error));
 
 // --- Meja & Tuas ---
 loader.load('/Lever/table.glb', function (gltf) {
@@ -130,8 +94,7 @@ loader.load('/Lever/table.glb', function (gltf) {
     table.position.set(15, -0.845, -5);
     scene.add(table);
     worldOctree.fromGraphNode(table);
-}, (xhr) => console.log('Table ' + (xhr.loaded / xhr.total * 100) + '% loaded'),
-   (error) => console.error('Error loading table:', error));
+});
 
 // Tuas Pengumpul Uang
 loader.load('/Lever/lever.glb', function (gltf) {
@@ -149,8 +112,7 @@ loader.load('/Lever/lever.glb', function (gltf) {
             highlightColor: '#00ff00'
         })
     });
-}, (xhr) => console.log('Collect Lever ' + (xhr.loaded / xhr.total * 100) + '% loaded'),
-   (error) => console.error('Error loading collect lever:', error));
+});
 
 // Tuas Pembangunan
 loader.load('/Lever/lever.glb', function (gltf) {
@@ -178,10 +140,9 @@ loader.load('/Lever/lever.glb', function (gltf) {
             };
         }
     });
-}, (xhr) => console.log('Build Lever ' + (xhr.loaded / xhr.total * 100) + '% loaded'),
-   (error) => console.error('Error loading build lever:', error));
+});
 
-// Tuas Pintar untuk Kandang & Pohon & Hewan
+// Tuas Pintar untuk Kandang, Pohon, & Hewan
 loader.load('/Lever/lever.glb', function (gltf) {
     const penAnimalLever = gltf.scene;
     penAnimalLever.scale.set(1, 1, 1);
@@ -193,25 +154,24 @@ loader.load('/Lever/lever.glb', function (gltf) {
         model: penAnimalLever,
         action: handlePenAnimalLeverAction,
         getDetails: () => {
-            if (areTreesPurchased && animalsPurchasedCount >= TOTAL_PENS) {
-                return { canInteract: false, message: 'Semua Pengembangan Selesai', highlightColor: '#00ffaa' };
+            if (areTreesPurchased) {
+                return { canInteract: false, message: 'Pengembangan Area Selesai', highlightColor: '#00ffaa' };
             }
 
-            if (pensPurchasedCount === TOTAL_PENS && animalsPurchasedCount < TOTAL_PENS) {
-                const currentAnimalName = animalData[currentAnimalIndexToBuy]?.name || "Hewan";
-                const hasEnoughMoney = playerMoney >= ANIMAL_COST;
-                return {
-                    canInteract: hasEnoughMoney,
-                    message: hasEnoughMoney ? `Beli ${currentAnimalName} (${animalsPurchasedCount + 1}/${TOTAL_PENS}) (Biaya: ${ANIMAL_COST})` : `Uang tidak cukup (Butuh: ${ANIMAL_COST})`,
-                    highlightColor: hasEnoughMoney ? '#00ff00' : '#ff0000'
-                };
-            }
-
-            if (pensPurchasedCount >= TOTAL_PENS) {
+            if (pensPurchasedCount >= TOTAL_PENS && animalsPurchasedCount >= TOTAL_ANIMALS) {
                 const hasEnoughMoney = playerMoney >= TREES_COST;
                 return {
                     canInteract: hasEnoughMoney,
                     message: hasEnoughMoney ? `Beli Semua Pohon (Biaya: ${TREES_COST})` : `Uang tidak cukup (Butuh: ${TREES_COST})`,
+                    highlightColor: hasEnoughMoney ? '#00ff00' : '#ff0000'
+                };
+            }
+
+            if (pensPurchasedCount >= TOTAL_PENS && animalsPurchasedCount < TOTAL_ANIMALS) {
+                const hasEnoughMoney = playerMoney >= ANIMAL_COST;
+                return {
+                    canInteract: hasEnoughMoney,
+                    message: hasEnoughMoney ? `Beli Hewan (${animalsPurchasedCount + 1}/${TOTAL_ANIMALS}) (Biaya: ${ANIMAL_COST})` : `Uang tidak cukup (Butuh: ${ANIMAL_COST})`,
                     highlightColor: hasEnoughMoney ? '#00ff00' : '#ff0000'
                 };
             }
@@ -224,120 +184,96 @@ loader.load('/Lever/lever.glb', function (gltf) {
             };
         }
     });
-}, (xhr) => console.log('Pen/Animal Lever ' + (xhr.loaded / xhr.total * 100) + '% loaded'),
-   (error) => console.error('Error loading pen/animal lever:', error));
+});
 
 // --- Dinding, Lantai, Latar Belakang & Cahaya ---
 (function setupWorld() {
     function loadWall(position, rotationY = 0) {
         loader.load('/Wall/longwall.glb', function (gltf) {
             const wall = gltf.scene;
-            wall.scale.set(2, 2, 2); // Skala tetap 2,2,2
+            wall.scale.set(2, 2, 2);
             wall.rotation.y = rotationY;
             wall.position.copy(position);
             scene.add(wall);
             worldOctree.fromGraphNode(wall);
-            wall.traverse((node) => { if (node.isMesh) node.castShadow = true; }); // Pastikan dinding memancarkan bayangan
-        }, (xhr) => console.log('Wall ' + (xhr.loaded / xhr.total * 100) + '% loaded'),
-           (error) => console.error('Error loading wall:', error));
+        });
     }
 
-    function loadFence(position, rotationY = 0, parentGroup, penIndex) {
+    function loadFence(position, rotationY = 0, parentGroup) {
         loader.load('/Wall/low_poly_wood_fence_with_snow.glb', function (gltf) {
             const fence = gltf.scene;
             fence.scale.set(1.5, 1.5, 1.5);
             fence.rotation.y = rotationY;
             fence.position.copy(position);
-            
-            fence.traverse((node) => {
-                if (node.isMesh) {
-                    node.castShadow = true;
-                    node.receiveShadow = true;
-                }
-            });
-
             parentGroup.add(fence);
-            worldOctree.fromGraphNode(fence); // Penting: Tambahkan ke Octree
-            console.log(`Fence for pen ${penIndex} loaded.`); // Log konfirmasi pemuatan pagar
-        }, (xhr) => console.log(`Fence for pen ${penIndex} ` + (xhr.loaded / xhr.total * 100) + '% loaded'),
-           (error) => console.error(`Error loading fence for pen ${penIndex}:`, error));
+            worldOctree.fromGraphNode(fence);
+        });
+    }
+
+    // Fungsi untuk memuat model hewan (jerapah)
+    function loadAnimalModel(position, rotationY = 0, parentGroup, animalIndex) {
+        loader.load('/Animal/giraffe.glb', function (gltf) {
+            const animal = gltf.scene;
+            animal.scale.set(0.5, 0.5, 0.5); // Ukuran jerapah
+            animal.rotation.y = rotationY;
+            animal.position.copy(position);
+            parentGroup.add(animal); // Tambahkan jerapah ke dalam grup kandang
+            worldOctree.fromGraphNode(animal); // Tambahkan ke octree untuk collision
+            animalObjects[animalIndex] = animal; // Simpan referensi model
+        }, undefined, function (error) {
+            console.error('An error occurred while loading the giraffe model:', error);
+            // Tambahkan pesan visual ke UI jika terjadi error loading
+            leverMessage.innerText = 'Gagal memuat model jerapah. Cek konsol.';
+            leverMessage.style.display = 'block';
+        });
     }
 
     function createBuyablePen(centerPosition, penIndex) {
         const penGroup = new THREE.Group();
         penGroup.userData.isPen = true;
         penGroup.userData.penIndex = penIndex;
-        penGroup.userData.hasAnimal = false;
-        penGroup.userData.animalModel = null;
-
-        // **PERHATIAN:** Ini yang membuat kandang tidak terlihat saat startup.
-        // HANYA untuk debugging, Anda bisa mengubahnya menjadi true untuk melihat semua kandang.
-        // Tetapi untuk logika game yang benar, biarkan 'false'
         penGroup.visible = false;
-        
         scene.add(penGroup);
         penObjects[penIndex] = penGroup;
 
-        // Logika pembuatan pagar
-        const fenceLength = 2.05; // Panjang satu segmen pagar
-        const fencesPerSide = 2; // Jumlah segmen pagar per sisi kandang
-        const sideLength = fencesPerSide * fenceLength; // Total panjang satu sisi kandang
+        const fenceLength = 2.05;
+        const fencesPerSide = 2;
+        const sideLength = fencesPerSide * fenceLength;
         const halfSideLength = sideLength / 2;
-        const cY = centerPosition.y; // Y position of the pen group itself
+        const cY = centerPosition.y;
+        const relativeCenter = new THREE.Vector3(0, 0, 0);
 
-        // Posisi pagar relatif terhadap centerPosition (0,0,0) dari penGroup
-        loadFence(new THREE.Vector3(-halfSideLength + (fenceLength / 2), cY, -halfSideLength), Math.PI / 2, penGroup, penIndex);
-        loadFence(new THREE.Vector3(-halfSideLength + (fenceLength * 1.5), cY, -halfSideLength), (3 * Math.PI) / 2, penGroup, penIndex); // Perhatikan rotasi
-        loadFence(new THREE.Vector3(-halfSideLength + (fenceLength / 2), cY, halfSideLength), Math.PI / 2, penGroup, penIndex);
-        loadFence(new THREE.Vector3(-halfSideLength + (fenceLength * 1.5), cY, halfSideLength), (3 * Math.PI) / 2, penGroup, penIndex);
+        loadFence(new THREE.Vector3(relativeCenter.x - halfSideLength + (fenceLength / 2), cY, relativeCenter.z - halfSideLength), Math.PI / 2, penGroup);
+        loadFence(new THREE.Vector3(relativeCenter.x - halfSideLength + (fenceLength * 1.5), cY, relativeCenter.z - halfSideLength), (3 * Math.PI) / 2, penGroup);
+        loadFence(new THREE.Vector3(relativeCenter.x - halfSideLength + (fenceLength / 2), cY, relativeCenter.z + halfSideLength), Math.PI / 2, penGroup);
+        loadFence(new THREE.Vector3(relativeCenter.x - halfSideLength + (fenceLength * 1.5), cY, relativeCenter.z + halfSideLength), (3 * Math.PI) / 2, penGroup);
+        loadFence(new THREE.Vector3(relativeCenter.x - halfSideLength, cY, relativeCenter.z - halfSideLength + (fenceLength / 2)), 2 * Math.PI, penGroup);
+        loadFence(new THREE.Vector3(relativeCenter.x - halfSideLength, cY, relativeCenter.z - halfSideLength + (fenceLength * 1.5)), Math.PI, penGroup);
+        loadFence(new THREE.Vector3(relativeCenter.x + halfSideLength, cY, relativeCenter.z - halfSideLength + (fenceLength / 2)), 2 * Math.PI, penGroup);
+        loadFence(new THREE.Vector3(relativeCenter.x + halfSideLength, cY, relativeCenter.z - halfSideLength + (fenceLength * 1.5)), Math.PI, penGroup);
 
-        loadFence(new THREE.Vector3(-halfSideLength, cY, -halfSideLength + (fenceLength / 2)), 0, penGroup, penIndex); // Rotasi 0 atau 2*PI
-        loadFence(new THREE.Vector3(-halfSideLength, cY, -halfSideLength + (fenceLength * 1.5)), Math.PI, penGroup, penIndex); // Rotasi PI
-        loadFence(new THREE.Vector3(halfSideLength, cY, -halfSideLength + (fenceLength / 2)), 0, penGroup, penIndex);
-        loadFence(new THREE.Vector3(halfSideLength, cY, -halfSideLength + (fenceLength * 1.5)), Math.PI, penGroup, penIndex);
+        penGroup.position.copy(centerPosition);
     }
 
-    const worldSize = 50;
-    const halfWorldSize = worldSize / 2;
-    const wallThickness = 0.5;
-    const wallHeightOffset = 0; // Sesuaikan jika wall model memiliki origin di bawah tanah
-
-    const wallModelLength = 20; // Perkiraan panjang model longwall.glb setelah scale 2x
-    const numWallsPerSide = Math.ceil(worldSize / wallModelLength);
-
-    for (let i = 0; i < numWallsPerSide; i++) {
-        const offset = i * wallModelLength - (worldSize / 2) + (wallModelLength / 2);
-
-        loadWall(new THREE.Vector3(offset, wallHeightOffset, -halfWorldSize + wallThickness), 0);
-        loadWall(new THREE.Vector3(offset, wallHeightOffset, halfWorldSize - wallThickness), Math.PI);
-
-        loadWall(new THREE.Vector3(-halfWorldSize + wallThickness, wallHeightOffset, offset), Math.PI / 2);
-        loadWall(new THREE.Vector3(halfWorldSize - wallThickness, wallHeightOffset, offset), -Math.PI / 2);
-    }
+    const wallPositions = [ { pos: new THREE.Vector3(-10, 0, -24.7) }, { pos: new THREE.Vector3(-24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-24.3, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-10, 0, 25) }, { pos: new THREE.Vector3(24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(24.7, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(8, 0, -24.7) }, { pos: new THREE.Vector3(8, 0, 25) }];
+    wallPositions.forEach(w => loadWall(w.pos, w.rot));
 
     const gridRows = 3;
     const gridCols = 3;
-    const gridSpacing = 8; // Jarak antar pusat kandang
+    const gridSpacing = 8;
     let penCounter = 0;
 
     for (let i = 0; i < gridRows; i++) {
         for (let j = 0; j < gridCols; j++) {
-            // Sesuaikan posisi awal kandang agar tidak terlalu dekat dengan tepi atau bangunan awal
-            const x = (i - 1) * gridSpacing; // Menggeser pusat grid ke (0,0)
-            const z = (j - 1) * gridSpacing; // Menggeser pusat grid ke (0,0)
-
-            // Anda bisa menyesuaikan offset ini agar seluruh grid kandang berada di area tertentu
-            // Misalnya, jika Anda ingin grid dimulai dari sekitar (-15, -15)
-            const globalOffsetX = -10;
-            const globalOffsetZ = -10;
-
-            createBuyablePen(new THREE.Vector3(x + globalOffsetX, 0, z + globalOffsetZ), penCounter);
+            const x = (i - 1) * gridSpacing;
+            const z = (j - 1) * gridSpacing;
+            createBuyablePen(new THREE.Vector3(x, 0, z), penCounter);
             penCounter++;
         }
     }
 
-    const floorGeometry = new THREE.PlaneGeometry(worldSize, worldSize);
-    const floorTexture = new THREE.TextureLoader().load('/Floor/grass.jpg', (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(worldSize / 5, worldSize / 5); });
+    const floorGeometry = new THREE.PlaneGeometry(50, 50);
+    const floorTexture = new THREE.TextureLoader().load('/Floor/grass.jpg', (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(5, 5); });
     const floorMaterial = new THREE.MeshPhongMaterial({ map: floorTexture });
     const floorMesh = new THREE.Mesh(floorGeometry, floorMaterial);
     floorMesh.rotation.x = -Math.PI / 2;
@@ -398,12 +334,11 @@ function controls(deltaTime) {
 }
 
 function teleportPlayerIfOob() {
-    // Sesuaikan posisi teleport awal pemain agar tidak di bawah tanah
-    if (camera.position.y <= -25) { // Jika jatuh terlalu jauh
-        playerCollider.start.set(0, 1, 0); // Posisi aman di tengah dunia
-        playerCollider.end.set(0, 2, 0);
+    if (camera.position.y <= -25) {
+        playerCollider.start.set(-9, 0.8, 5);
+        playerCollider.end.set(-9, 1.2, 5);
         camera.position.copy(playerCollider.end);
-        camera.rotation.set(0, 0, 0); // Reset rotasi kamera
+        camera.rotation.set(0, 0, 0);
     }
 }
 
@@ -414,20 +349,9 @@ function updateCollectedMoneyDisplay() {
 function updateUncollectedMoneyDisplay() {
     if (uncollectedMoneyDisplay) uncollectedMoneyDisplay.innerText = `💰 ${uncollectedMoney}`;
 }
-
 function updateIncomeRateDisplay() {
-    let baseIncome = 0;
-    if (buildingLevel === 0) {
-        baseIncome = incomeRatePerBuilding[0];
-    } else {
-        baseIncome = incomeRatePerBuilding[buildingLevel];
-    }
-    const penIncome = pensPurchasedCount * incomePerPen;
-    const animalIncome = animalsPurchasedCount * INCOME_PER_ANIMAL;
-    currentIncomeRate = baseIncome + penIncome + animalIncome;
     if (incomeRateDisplay) incomeRateDisplay.innerText = `+${currentIncomeRate} / detik`;
 }
-
 function generateMoney() {
     uncollectedMoney += currentIncomeRate;
     updateUncollectedMoneyDisplay();
@@ -449,10 +373,6 @@ function highlightObject(object, highlight, color = 0x000000) {
         if (node.isMesh) {
             node.material.emissive = new THREE.Color(highlight ? color : 0x000000);
             node.material.emissiveIntensity = highlight ? 0.5 : 0;
-            // Penting: Pastikan material tidak null
-            if (node.material.isMeshStandardMaterial || node.material.isMeshPhongMaterial) {
-                 node.material.needsUpdate = true; // Perbarui material
-            }
         }
     });
 }
@@ -466,7 +386,7 @@ function updateInteractions() {
 
     const nearbyObjects = [];
     for (const obj of interactiveObjects) {
-        if (!obj.model) continue;
+        if (!obj.model || !obj.model.parent) continue;
 
         const objPosition = new THREE.Vector3();
         obj.model.getWorldPosition(objPosition);
@@ -508,15 +428,14 @@ function updateInteractions() {
     }
 }
 
-
 function animateLeverPull(leverToAnimate) {
     if (!leverToAnimate || TWEEN.getAll().length > 0) return;
-    const startRotation = { x: leverToAnimate.rotation.x };
-    const endRotation = { x: leverToAnimate.rotation.x + Math.PI / 4 };
+    const startRotation = { y: leverToAnimate.rotation.y };
+    const endRotation = { y: leverToAnimate.rotation.y + Math.PI / 4 };
     new TWEEN.Tween(startRotation)
         .to(endRotation, 200)
         .easing(TWEEN.Easing.Quadratic.InOut)
-        .onUpdate(() => { leverToAnimate.rotation.x = startRotation.x; })
+        .onUpdate(() => { leverToAnimate.rotation.y = startRotation.y; })
         .yoyo(true)
         .repeat(1)
         .start();
@@ -530,16 +449,14 @@ function loadPineTree(position) {
         tree.rotation.y = Math.random() * Math.PI * 2;
         scene.add(tree);
         worldOctree.fromGraphNode(tree);
-        tree.traverse((node) => { if (node.isMesh) node.castShadow = true; }); // Pastikan pohon memancarkan bayangan
-    }, (xhr) => console.log('Pine Tree ' + (xhr.loaded / xhr.total * 100) + '% loaded'),
-       (error) => console.error('Error loading pine tree:', error));
+    });
 }
 
 function placeTreesProcedurally(count) {
     const noGoZones = [
-        { x: 0 + (-10), z: 0 + (-10), width: 26, depth: 26 }, // Pen grid area
-        { x: -10, z: 10, width: 12, depth: 12 }, // Building area
-        { x: 15, z: -5, width: 8, depth: 10 }, // Lever/table area
+        { x: 0, z: 0, width: 26, depth: 26 },
+        { x: -10, z: 10, width: 12, depth: 12 },
+        { x: 15, z: -5, width: 8, depth: 10 },
     ];
 
     const worldBounds = 24;
@@ -584,94 +501,60 @@ function buyAllTrees() {
     animateLeverPull(interactiveObjects.find(o => o.action === handlePenAnimalLeverAction)?.model);
 
     placeTreesProcedurally(50);
+    currentIncomeRate += 100;
     updateIncomeRateDisplay();
 }
 
-// Fungsi untuk membeli hewan
 function buyAnimal() {
-    // Memastikan ada kandang yang sudah dibeli dan belum ada hewannya
-    const availablePen = penObjects.find(pen => pen && pen.visible && !pen.userData.hasAnimal);
-
-    if (!availablePen) {
-        console.warn("Tidak ada kandang kosong yang tersedia untuk menempatkan hewan.");
-        return;
-    }
-
-    if (animalsPurchasedCount >= TOTAL_PENS || playerMoney < ANIMAL_COST) {
-        console.warn("Kondisi untuk membeli hewan tidak terpenuhi. Jumlah hewan: " + animalsPurchasedCount + ", Uang: " + playerMoney);
-        return;
-    }
-
-    const animalToBuy = animalData[currentAnimalIndexToBuy];
-    if (!animalToBuy) {
-        console.warn("Tidak ada data hewan untuk dibeli pada indeks ini.");
+    // Memastikan semua kandang sudah dibeli dan belum semua hewan dibeli
+    if (pensPurchasedCount < TOTAL_PENS || animalsPurchasedCount >= TOTAL_ANIMALS || playerMoney < ANIMAL_COST) {
         return;
     }
 
     playerMoney -= ANIMAL_COST;
     updateCollectedMoneyDisplay();
+
     animateLeverPull(interactiveObjects.find(o => o.action === handlePenAnimalLeverAction)?.model);
 
-    loader.load(animalToBuy.model, (gltf) => {
-        const animal = gltf.scene;
+    // Tentukan kandang mana yang akan ditempati hewan
+    // Hewan ke-0 akan masuk kandang ke-0, hewan ke-1 masuk kandang ke-1, dst.
+    const targetPenIndex = animalsPurchasedCount;
+    const targetPenGroup = penObjects[targetPenIndex];
 
-        animal.traverse((node) => {
-            if (node.isMesh) {
-                node.castShadow = true;
-                node.receiveShadow = true;
-                // Perbaiki material jika diperlukan (contoh: jika model tidak muncul)
-                // if (node.material.map) node.material.map.encoding = THREE.sRGBEncoding;
-                // if (node.material.emissive) node.material.emissive.encoding = THREE.sRGBEncoding;
-            }
-        });
+    if (targetPenGroup) {
+        // Posisi hewan di tengah kandang, sedikit di atas lantai
+        // Rotasi acak agar tidak seragam
+        loadAnimalModel(new THREE.Vector3(0, 0.5, 0), Math.random() * Math.PI * 2, targetPenGroup, animalsPurchasedCount);
+    } else {
+        console.warn(`Kandang dengan indeks ${targetPenIndex} tidak ditemukan untuk menempatkan hewan.`);
+        // Opsional: kembalikan uang jika kandang tidak ada
+        // playerMoney += ANIMAL_COST;
+        // updateCollectedMoneyDisplay();
+    }
 
-        // Set posisi hewan relatif terhadap kandang (grup penGroup)
-        // Posisi 0,0,0 akan menempatkan hewan di tengah grup kandang
-        animal.position.set(0, animalToBuy.offsetY || 0, 0); // Gunakan offsetY
-        animal.scale.set(animalToBuy.scale, animalToBuy.scale, animalToBuy.scale);
-        animal.rotation.y = Math.random() * Math.PI * 2;
-
-        availablePen.add(animal); // Tambahkan hewan ke grup kandang
-
-        // Tambahkan hewan ke worldOctree untuk kolisi
-        // Penting: Lakukan ini setelah posisi dan skala hewan diatur dan ditambahkan ke scene/grup parent
-        worldOctree.fromGraphNode(animal);
-
-        availablePen.userData.hasAnimal = true;
-        availablePen.userData.animalModel = animal; // Simpan referensi model hewan
-
-        animalsPurchasedCount++;
-        currentAnimalIndexToBuy = (currentAnimalIndexToBuy + 1) % animalData.length;
-        console.log(`Berhasil membeli dan menempatkan ${animalToBuy.name}. Total hewan: ${animalsPurchasedCount}.`);
-        updateIncomeRateDisplay();
-    },
-    // Progress callback
-    (xhr) => {
-        console.log( `Memuat ${animalToBuy.name}: ` + ( xhr.loaded / xhr.total * 100 ) + '%');
-    },
-    // Error callback
-    (error) => {
-        console.error(`Gagal memuat model hewan ${animalToBuy.model}:`, error);
-        // Penting: Cek error di konsol. Ini biasanya masalah PATH.
-        alert(`Gagal memuat model hewan: ${animalToBuy.model}. Cek konsol untuk detailnya.`);
-    });
+    animalsPurchasedCount++;
+    currentIncomeRate += incomePerAnimal;
+    updateIncomeRateDisplay();
 }
 
 function handlePenAnimalLeverAction() {
-    if (pensPurchasedCount === TOTAL_PENS && animalsPurchasedCount < TOTAL_PENS) {
+    // Prioritas:
+    // 1. Beli Hewan: Jika semua kandang sudah dibeli TAPI belum semua hewan dibeli.
+    if (pensPurchasedCount >= TOTAL_PENS && animalsPurchasedCount < TOTAL_ANIMALS) {
         buyAnimal();
     }
-    else if (pensPurchasedCount >= TOTAL_PENS && !areTreesPurchased) { // Tambahkan !areTreesPurchased
+    // 2. Beli Pohon: Jika semua kandang DAN semua hewan sudah dibeli.
+    else if (pensPurchasedCount >= TOTAL_PENS && animalsPurchasedCount >= TOTAL_ANIMALS) {
         buyAllTrees();
-    } else {
+    }
+    // 3. Beli Kandang: Default, jika kondisi di atas tidak terpenuhi.
+    else {
         buyNextPen();
     }
 }
 
-
 function buyNextPen() {
     if (pensPurchasedCount >= TOTAL_PENS || playerMoney < PEN_COST) {
-        console.warn("Tidak bisa membeli kandang lagi atau uang tidak cukup.");
         return;
     }
 
@@ -683,10 +566,10 @@ function buyNextPen() {
     const nextPen = penObjects[pensPurchasedCount];
     if (nextPen) {
         nextPen.visible = true;
-        console.log(`Kandang ke-${pensPurchasedCount + 1} dibeli dan terlihat.`);
     }
 
     pensPurchasedCount++;
+    currentIncomeRate += incomePerPen;
     updateIncomeRateDisplay();
 }
 
@@ -706,11 +589,14 @@ function buildBuilding() {
             scene.add(newBuilding);
             worldOctree.fromGraphNode(newBuilding);
             buildings[buildingLevel] = newBuilding;
-            newBuilding.traverse((node) => { if (node.isMesh) node.castShadow = true; });
-        }, (xhr) => console.log('Building ' + (xhr.loaded / xhr.total * 100) + '% loaded'),
-           (error) => console.error('Error loading building:', error));
+        });
 
+        const baseIncome = incomeRatePerBuilding[buildingLevel + 1] || incomeRatePerBuilding[incomeRatePerBuilding.length - 1];
+        const penIncome = pensPurchasedCount * incomePerPen;
+        const animalIncome = animalsPurchasedCount * incomePerAnimal;
+        currentIncomeRate = baseIncome + penIncome + animalIncome;
         updateIncomeRateDisplay();
+
         buildingLevel++;
 
         if (buildLeverModel) {
@@ -721,28 +607,6 @@ function buildBuilding() {
 
         activeInteraction = null;
         leverMessage.style.display = 'none';
-    }
-}
-
-function startSpin() {
-    if (!isSpinning) {
-        isSpinning = true;
-        spinStartTime = performance.now();
-    }
-}
-
-function handleSpin() {
-    if (isSpinning) {
-        const elapsedTime = performance.now() - spinStartTime;
-        if (elapsedTime < spinDuration) {
-            const spinAngle = (elapsedTime / spinDuration) * Math.PI * 2;
-            const twistAngle = Math.sin((elapsedTime / spinDuration) * Math.PI * 4) * 0.2;
-            knife.rotation.y = spinAngle;
-            knife.rotation.z = twistAngle;
-        } else {
-            isSpinning = false;
-            knife.rotation.copy(knife.userData.initialRotation);
-        }
     }
 }
 
@@ -773,7 +637,7 @@ container.addEventListener('click', () => {
 
 document.addEventListener('pointerlockchange', () => {
     if (document.pointerLockElement === document.body) {
-        document.addEventListener('mousedown', (e) => { if (e.button === 0) startSpin(); });
+        // Logika tambahan jika diperlukan setelah pointer lock
     }
 });
 
@@ -795,8 +659,7 @@ function animate() {
         controls(deltaTime);
         updatePlayer(deltaTime);
         teleportPlayerIfOob();
-    }
-    handleSpin();
+    };
     updateInteractions();
     TWEEN.update();
     renderer.render(scene, camera);
