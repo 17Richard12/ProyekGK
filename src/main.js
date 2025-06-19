@@ -83,6 +83,7 @@ let pensPurchasedCount = 0; // Menghitung jumlah kandang yang sudah dibeli
 const TOTAL_PENS = 9;
 let penObjects = []; // Hanya untuk menyimpan model kandang
 let gorillaMixers = [];
+const GORILLA_CAGE_INDEX = 0;
 
 // Objek interaktif akan dikelola di sini
 let interactiveObjects = [];
@@ -624,7 +625,9 @@ function buyNextPen() {
     const nextPen = penObjects[pensPurchasedCount];
     if (nextPen) {
         nextPen.visible = true;
-        loadGorilla(nextPen.position);
+         if (pensPurchasedCount === GORILLA_CAGE_INDEX) {
+            loadGorilla(nextPen.position);
+        }
     }
 
     // Tambah jumlah kandang yang dibeli
@@ -734,7 +737,9 @@ function loadGame() {
             // =======================================================
             // BARU: Muat gorila untuk setiap kandang yang sudah ada
             // =======================================================
-            loadGorilla(penModel.position);
+            if (i === GORILLA_CAGE_INDEX) {
+                loadGorilla(penModel.position);
+            }
         }
     }
 
