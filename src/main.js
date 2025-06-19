@@ -54,6 +54,7 @@ const leverMessage = document.getElementById('leverMessage');
 let knife;
 let mouseTime = 0;
 let isSpinning = false;
+let spinStartTime;
 const spinDuration = 500;
 
 // Sistem Bangunan & Interaksi (Struktur Baru)
@@ -148,7 +149,12 @@ loader.load('/Lever/lever.glb', function (gltf) {
 });
 
 // --- Dinding, Lantai, Latar Belakang & Cahaya ---
+// Ganti seluruh fungsi setupWorld() Anda dengan yang ini
+
+// --- Dinding, Lantai, Latar Belakang & Cahaya ---
+// Ganti seluruh fungsi setupWorld() Anda dengan yang ini
 (function setupWorld() {
+    // --- FUNGSI UNTUK MEMUAT DINDING ---
     function loadWall(position, rotationY = 0) {
         loader.load('/Wall/longwall.glb', function (gltf) {
             const wall = gltf.scene;
@@ -159,11 +165,73 @@ loader.load('/Lever/lever.glb', function (gltf) {
             worldOctree.fromGraphNode(wall);
         });
     }
-    const wallPositions = [ { pos: new THREE.Vector3(-10, 0, -24.7) }, { pos: new THREE.Vector3(-10, 3.5, -24.7) }, { pos: new THREE.Vector3(-24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-24.5, 3.5, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-24.3, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-24.3, 3.5, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-10, 0, 25) }, { pos: new THREE.Vector3(-10, 3.5, 25) }, { pos: new THREE.Vector3(24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(24.5, 3.5, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(24.7, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(24.7, 3.5, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(8, 0, -24.7) }, { pos: new THREE.Vector3(8, 3.5, -24.7) }, { pos: new THREE.Vector3(8, 0, 25) }, { pos: new THREE.Vector3(8, 3.5, 25) }];
-    wallPositions.forEach(w => loadWall(w.pos, w.rot));
 
+    // --- FUNGSI UNTUK MEMUAT 1 SEGMEN PAGAR ---
+    function loadFence(position, rotationY = 0) {
+        loader.load('/Wall/low_poly_wood_fence_with_snow.glb', function (gltf) {
+            const fence = gltf.scene;
+            fence.scale.set(1.5, 1.5, 1.5); 
+            fence.rotation.y = rotationY;
+            fence.position.copy(position);
+            scene.add(fence);
+            worldOctree.fromGraphNode(fence);
+        });
+    }
+
+    // ===================================================================
+    // FUNGSI BARU UNTUK MEMBUAT SATU KANDANG HEWAN (MENGGUNAKAN LOGIKA ANDA)
+    // ===================================================================
+    function createPenWithYourLogic(centerPosition) {
+        // Menggunakan nilai dan logika persis seperti di kode Anda
+        const fenceLength = 2.05;
+        const fencesPerSide = 2;
+        const sideLength = fencesPerSide * fenceLength;
+        const halfSideLength = sideLength / 2;
+
+        // Semua posisi dihitung relatif terhadap centerPosition
+        const cX = centerPosition.x;
+        const cY = centerPosition.y;
+        const cZ = centerPosition.z;
+
+        // --- Sisi Depan (Z negatif) ---
+        loadFence(new THREE.Vector3(cX - halfSideLength + (fenceLength / 2), cY, cZ - halfSideLength), Math.PI / 2);
+        loadFence(new THREE.Vector3(cX - halfSideLength + (fenceLength * 1.5), cY, cZ - halfSideLength), (3 * Math.PI) / 2);
+
+        // --- Sisi Belakang (Z positif) ---
+        loadFence(new THREE.Vector3(cX - halfSideLength + (fenceLength / 2), cY, cZ + halfSideLength), Math.PI / 2);
+        loadFence(new THREE.Vector3(cX - halfSideLength + (fenceLength * 1.5), cY, cZ + halfSideLength), (3 * Math.PI) / 2);
+
+        // --- Sisi Kiri (X negatif) ---
+        loadFence(new THREE.Vector3(cX - halfSideLength, cY, cZ - halfSideLength + (fenceLength / 2)), 2 * Math.PI);
+        loadFence(new THREE.Vector3(cX - halfSideLength, cY, cZ - halfSideLength + (fenceLength * 1.5)), Math.PI);
+
+        // --- Sisi Kanan (X positif) ---
+        loadFence(new THREE.Vector3(cX + halfSideLength, cY, cZ - halfSideLength + (fenceLength / 2)), 2 * Math.PI);
+        loadFence(new THREE.Vector3(cX + halfSideLength, cY, cZ - halfSideLength + (fenceLength * 1.5)), Math.PI);
+    }
+
+    // --- MEMUAT DINDING ---
+    const wallPositions = [ { pos: new THREE.Vector3(-10, 0, -24.7) }, { pos: new THREE.Vector3(-24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-24.3, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-10, 0, 25) }, { pos: new THREE.Vector3(24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(24.7, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(8, 0, -24.7) }, { pos: new THREE.Vector3(8, 0, 25) }];
+    wallPositions.forEach(w => loadWall(w.pos, w.rot));
+    
+    // ===================================================================
+    // LOGIKA UNTUK MEMBUAT 9 KANDANG DALAM GRID 3x3
+    // ===================================================================
+    const gridRows = 3;
+    const gridCols = 3;
+    const gridSpacing = 8; // Jarak antar kandang
+
+    for (let i = 0; i < gridRows; i++) {
+        for (let j = 0; j < gridCols; j++) {
+            const x = (i - 1) * gridSpacing; 
+            const z = (j - 1) * gridSpacing; 
+            createPenWithYourLogic(new THREE.Vector3(x, 0, z));
+        }
+    }
+
+    // --- MEMUAT LANTAI, BACKGROUND, DAN CAHAYA ---
     const floorGeometry = new THREE.PlaneGeometry(50, 50);
-    const floorTexture = new THREE.TextureLoader().load('/Floor/tile.jpg', (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(5, 5); });
+    const floorTexture = new THREE.TextureLoader().load('/Floor/grass.jpg', (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(5, 5); });
     const floorMaterial = new THREE.MeshPhongMaterial({ map: floorTexture });
     const floorMesh = new THREE.Mesh(floorGeometry, floorMaterial);
     floorMesh.rotation.x = -Math.PI / 2;
@@ -171,7 +239,7 @@ loader.load('/Lever/lever.glb', function (gltf) {
     scene.add(floorMesh);
     worldOctree.fromGraphNode(floorMesh);
 
-    scene.background = new THREE.TextureLoader().load('/Background/ascentmap.jpg', (t) => { t.encoding = THREE.sRGBEncoding; });
+    scene.background = new THREE.TextureLoader().load('/Background/langit.jpg', (t) => { t.encoding = THREE.sRGBEncoding; });
     scene.add(new THREE.AmbientLight(0x404040, 1.5));
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
     directionalLight.position.set(5, 10, 7.5);
