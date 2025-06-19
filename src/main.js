@@ -1,4 +1,4 @@
-// main.js - Versi Diperbaiki dengan Urutan yang Benar
+// main.js - Versi Lebih Rapi dan Terstruktur
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -15,10 +15,7 @@ const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerH
 camera.rotation.order = 'YXZ';
 
 const container = document.getElementById('container');
-const renderer = new THREE.WebGLRenderer({
-    antialias: true,
-    powerPreference: 'high-performance'
-});
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
@@ -58,6 +55,8 @@ let knife;
 let mouseTime = 0;
 let isSpinning = false;
 const spinDuration = 500;
+
+// Sistem Bangunan & Interaksi (Struktur Baru)
 let buildingLevel = 0;
 const buildingTierCosts = [100, 500, 1500];
 const buildingTierModels = [
@@ -66,12 +65,123 @@ const buildingTierModels = [
     '/Building/house_valo.glb'
 ];
 let buildings = [];
+
+// Objek interaktif akan dikelola di sini
 let interactiveObjects = [];
 let activeInteraction = null;
-let animalMixers = [];
 
 // =================================================================
-// BAGIAN 3: FUNGSI-FUNGSI UTAMA (DEFINISI)
+// BAGIAN 3: PEMUATAN ASET
+// =================================================================
+
+// --- Senjata Pemain ---
+loader.load('/Knife/karambit.glb', (gltf) => {
+    knife = gltf.scene;
+    knife.scale.set(0.1, 0.1, 0.1);
+    knife.position.set(0.5, -0.5, -1);
+    knife.rotation.set(4.5, Math.PI, -21);
+    knife.userData.initialPosition = knife.position.clone();
+    knife.userData.initialRotation = knife.rotation.clone();
+    knife.traverse((node) => {
+        if (node.isMesh) {
+            node.renderOrder = 9999;
+            node.material.depthTest = false;
+        }
+    });
+    camera.add(knife);
+    scene.add(camera);
+}, undefined, (error) => console.error('Error loading knife:', error));
+
+// --- Meja & Tuas ---
+loader.load('/Lever/table.glb', function (gltf) {
+    const table = gltf.scene;
+    table.scale.set(0.02, 0.02, 0.02);
+    table.rotation.set(0, Math.PI / 2, 0);
+    table.position.set(15, -0.845, -5);
+    scene.add(table);
+    worldOctree.fromGraphNode(table);
+});
+
+// Tuas Pengumpul Uang
+loader.load('/Lever/lever.glb', function (gltf) {
+    const collectLever = gltf.scene;
+    collectLever.scale.set(1, 1, 1);
+    collectLever.rotation.set(0, Math.PI / 2, 0);
+    collectLever.position.set(15, 0.7, -3);
+    scene.add(collectLever);
+    // Tambahkan ke sistem interaksi
+    interactiveObjects.push({
+        model: collectLever,
+        action: collectMoney,
+        getDetails: () => ({
+            canInteract: uncollectedMoney > 0,
+            message: 'Tekan F untuk mengambil uang',
+            highlightColor: '#00ff00'
+        })
+    });
+});
+
+// Tuas Pembangunan
+loader.load('/Lever/lever.glb', function (gltf) {
+    const buildLever = gltf.scene;
+    buildLever.scale.set(1, 1, 1);
+    buildLever.rotation.set(0, Math.PI / 2, 0);
+    buildLever.position.set(15, 0.7, -7);
+    scene.add(buildLever);
+    // Tambahkan ke sistem interaksi
+    interactiveObjects.push({
+        model: buildLever,
+        action: buildBuilding,
+        getDetails: () => {
+            if (buildingLevel >= buildingTierCosts.length) {
+                return { canInteract: false, message: 'Level Maksimal', highlightColor: '#ffff00' };
+            }
+            const currentCost = buildingTierCosts[buildingLevel];
+            const hasEnoughMoney = playerMoney >= currentCost;
+            return {
+                canInteract: hasEnoughMoney,
+                message: hasEnoughMoney ? `Upgrade ke Lv. ${buildingLevel + 1} (Biaya: ${currentCost})` : `Uang tidak cukup (Butuh: ${currentCost})`,
+                highlightColor: hasEnoughMoney ? '#00ff00' : '#ff0000'
+            };
+        }
+    });
+});
+
+// --- Dinding, Lantai, Latar Belakang & Cahaya ---
+(function setupWorld() {
+    function loadWall(position, rotationY = 0) {
+        loader.load('/Wall/longwall.glb', function (gltf) {
+            const wall = gltf.scene;
+            wall.scale.set(2, 2, 2);
+            wall.rotation.y = rotationY;
+            wall.position.copy(position);
+            scene.add(wall);
+            worldOctree.fromGraphNode(wall);
+        });
+    }
+    const wallPositions = [ { pos: new THREE.Vector3(-10, 0, -24.7) }, { pos: new THREE.Vector3(-10, 3.5, -24.7) }, { pos: new THREE.Vector3(-24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-24.5, 3.5, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-24.3, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-24.3, 3.5, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-10, 0, 25) }, { pos: new THREE.Vector3(-10, 3.5, 25) }, { pos: new THREE.Vector3(24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(24.5, 3.5, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(24.7, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(24.7, 3.5, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(8, 0, -24.7) }, { pos: new THREE.Vector3(8, 3.5, -24.7) }, { pos: new THREE.Vector3(8, 0, 25) }, { pos: new THREE.Vector3(8, 3.5, 25) }];
+    wallPositions.forEach(w => loadWall(w.pos, w.rot));
+
+    const floorGeometry = new THREE.PlaneGeometry(50, 50);
+    const floorTexture = new THREE.TextureLoader().load('/Floor/tile.jpg', (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(5, 5); });
+    const floorMaterial = new THREE.MeshPhongMaterial({ map: floorTexture });
+    const floorMesh = new THREE.Mesh(floorGeometry, floorMaterial);
+    floorMesh.rotation.x = -Math.PI / 2;
+    floorMesh.receiveShadow = true;
+    scene.add(floorMesh);
+    worldOctree.fromGraphNode(floorMesh);
+
+    scene.background = new THREE.TextureLoader().load('/Background/ascentmap.jpg', (t) => { t.encoding = THREE.sRGBEncoding; });
+    scene.add(new THREE.AmbientLight(0x404040, 1.5));
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(5, 10, 7.5);
+    directionalLight.castShadow = true;
+    scene.add(directionalLight);
+})();
+
+
+// =================================================================
+// BAGIAN 4: FUNGSI-FUNGSI UTAMA (LOGIKA GAME)
 // =================================================================
 
 // --- Fungsi Player ---
@@ -161,8 +271,9 @@ function updateInteractions() {
     const playerPosition = new THREE.Vector3();
     playerCollider.getCenter(playerPosition);
     let closestObject = null;
-    let minDistance = 3;
+    let minDistance = 3; // Jarak interaksi maksimal
 
+    // Temukan objek interaktif terdekat
     for (const obj of interactiveObjects) {
         if (!obj.model) continue;
         const objPosition = new THREE.Vector3();
@@ -174,14 +285,17 @@ function updateInteractions() {
         }
     }
 
+    // Proses interaksi untuk objek terdekat, nonaktifkan yang lain
     activeInteraction = null;
     for (const obj of interactiveObjects) {
         if (obj === closestObject) {
             const details = obj.getDetails();
             if (details.canInteract) {
                 activeInteraction = obj;
+                highlightObject(obj.model, true, details.highlightColor);
+            } else {
+                 highlightObject(obj.model, true, details.highlightColor); // Tetap highlight tapi tidak bisa di-klik
             }
-            highlightObject(obj.model, true, details.highlightColor);
             leverMessage.innerText = details.message;
             leverMessage.style.display = 'block';
         } else {
@@ -202,7 +316,9 @@ function animateLeverPull(leverToAnimate) {
         .to(endRotation, 200)
         .easing(TWEEN.Easing.Quadratic.InOut)
         .onUpdate(() => { leverToAnimate.rotation.x = startRotation.x; })
-        .yoyo(true).repeat(1).start();
+        .yoyo(true)
+        .repeat(1)
+        .start();
 }
 
 function buildBuilding() {
@@ -223,62 +339,6 @@ function buildBuilding() {
         currentIncomeRate = incomeRatesByLevel[buildingLevel] || incomeRatesByLevel[incomeRatesByLevel.length - 1];
         updateIncomeRateDisplay();
     }
-}
-
-// Ganti fungsi lama dengan versi yang lebih baik ini
-function loadAndPlaceInstances(modelPath, positions, scale = new THREE.Vector3(1, 1, 1)) {
-    loader.load(modelPath, 
-        // 1. OnSuccess Callback (ketika berhasil)
-        (gltf) => {
-            console.log(`Berhasil memuat: ${modelPath}`, gltf); // LOGGING: Cek struktur di console
-
-            let sourceMesh = null;
-            // Cari Mesh pertama di dalam model
-            gltf.scene.traverse(child => {
-                if (child.isMesh) {
-                    sourceMesh = child;
-                }
-            });
-
-            if (sourceMesh) {
-                const geometry = sourceMesh.geometry;
-                const material = sourceMesh.material;
-
-                positions.forEach(pos => {
-                    const instance = new THREE.Mesh(geometry, material);
-                    instance.scale.copy(scale);
-                    instance.position.copy(pos);
-                    instance.castShadow = true;
-                    instance.receiveShadow = true;
-                    scene.add(instance);
-                    worldOctree.fromGraphNode(instance);
-                });
-                console.log(`Berhasil menempatkan ${positions.length} instance dari ${modelPath}`);
-            } else {
-                console.error(`Error: Tidak ditemukan Mesh di dalam ${modelPath}. Pastikan file .glb tidak kosong.`);
-            }
-        },
-        // 2. onProgress Callback (opsional)
-        undefined,
-        // 3. onError Callback (SANGAT PENTING UNTUK DEBUG)
-        (error) => {
-            console.error(`Gagal memuat model di path: ${modelPath}`, error);
-        }
-    );
-}
-
-function loadAndAnimateAnimal(path, position) {
-    loader.load(path, (gltf) => {
-        const animal = gltf.scene;
-        animal.position.copy(position);
-        scene.add(animal);
-        if (gltf.animations && gltf.animations.length) {
-            const mixer = new THREE.AnimationMixer(animal);
-            const action = mixer.clipAction(gltf.animations[0]);
-            action.play();
-            animalMixers.push(mixer);
-        }
-    }, undefined, (error) => console.error(`Error loading animal: ${path}`, error));
 }
 
 function startSpin() {
@@ -302,124 +362,6 @@ function handleSpin() {
         }
     }
 }
-
-// =================================================================
-// BAGIAN 4: PEMUATAN ASET & SETUP DUNIA
-// =================================================================
-
-// --- Senjata Pemain ---
-loader.load('/Knife/karambit.glb', (gltf) => {
-    knife = gltf.scene;
-    knife.scale.set(0.1, 0.1, 0.1);
-    knife.position.set(0.5, -0.5, -1);
-    knife.rotation.set(4.5, Math.PI, -21);
-    knife.userData.initialPosition = knife.position.clone();
-    knife.userData.initialRotation = knife.rotation.clone();
-    knife.traverse((node) => {
-        if (node.isMesh) {
-            node.renderOrder = 9999;
-            node.material.depthTest = false;
-        }
-    });
-    camera.add(knife);
-    scene.add(camera);
-}, undefined, (error) => console.error('Error loading knife:', error));
-
-// --- Meja & Tuas ---
-loader.load('/Lever/table.glb', function (gltf) {
-    const table = gltf.scene;
-    table.scale.set(0.02, 0.02, 0.02);
-    table.rotation.set(0, Math.PI / 2, 0);
-    table.position.set(15, -0.845, -5);
-    scene.add(table);
-    worldOctree.fromGraphNode(table);
-});
-
-loader.load('/Lever/lever.glb', function (gltf) {
-    const collectLever = gltf.scene;
-    collectLever.scale.set(1, 1, 1);
-    collectLever.rotation.set(0, Math.PI / 2, 0);
-    collectLever.position.set(15, 0.7, -3);
-    scene.add(collectLever);
-    interactiveObjects.push({
-        model: collectLever,
-        action: collectMoney,
-        getDetails: () => ({
-            canInteract: uncollectedMoney > 0,
-            message: 'Tekan F untuk mengambil uang',
-            highlightColor: '#00ff00'
-        })
-    });
-});
-
-loader.load('/Lever/lever.glb', function (gltf) {
-    const buildLever = gltf.scene;
-    buildLever.scale.set(1, 1, 1);
-    buildLever.rotation.set(0, Math.PI / 2, 0);
-    buildLever.position.set(15, 0.7, -7);
-    scene.add(buildLever);
-    interactiveObjects.push({
-        model: buildLever,
-        action: buildBuilding,
-        getDetails: () => {
-            if (buildingLevel >= buildingTierCosts.length) {
-                return { canInteract: false, message: 'Level Maksimal', highlightColor: '#ffff00' };
-            }
-            const currentCost = buildingTierCosts[buildingLevel];
-            const hasEnoughMoney = playerMoney >= currentCost;
-            return {
-                canInteract: hasEnoughMoney,
-                message: hasEnoughMoney ? `Upgrade ke Lv. ${buildingLevel + 1} (Biaya: ${currentCost})` : `Uang tidak cukup (Butuh: ${currentCost})`,
-                highlightColor: hasEnoughMoney ? '#00ff00' : '#ff0000'
-            };
-        }
-    });
-});
-
-// --- Kandang ---
-const cagePositions = [
-    new THREE.Vector3(-15, 0, 15), new THREE.Vector3(-5, 0, 15), new THREE.Vector3(5, 0, 15),
-    new THREE.Vector3(-15, 0, 0),  new THREE.Vector3(-5, 0, 0),  new THREE.Vector3(5, 0, 0),
-    new THREE.Vector3(-15, 0, -20), new THREE.Vector3(-5, 0, -20), new THREE.Vector3(5, 0, -20) // <-- Diperbaiki
-];
-// Ganti angka skala menjadi jauh lebih kecil
-loadAndPlaceInstances('/Building/jail_cage.glb', cagePositions, new THREE.Vector3(0.04, 0.04, 0.04));
-
-// --- Hewan ---
-const animalData = [
-    // { path: '/Animals/african_buffalo.glb', position: new THREE.Vector3(0, 0, 0) },
-];
-animalData.forEach(data => {
-    loadAndAnimateAnimal(data.path, data.position);
-});
-
-// --- Dinding, Lantai, Latar Belakang & Cahaya ---
-(function setupWorld() {
-    const wallPositions = [
-        new THREE.Vector3(-15, 0, -24.7), new THREE.Vector3(0, 0, -24.7), new THREE.Vector3(15, 0, -24.7),
-        new THREE.Vector3(-15, 0, 24.7), new THREE.Vector3(0, 0, 24.7), new THREE.Vector3(15, 0, 24.7),
-        new THREE.Vector3(-24.7, 0, -15), new THREE.Vector3(-24.7, 0, 0), new THREE.Vector3(-24.7, 0, 15),
-        new THREE.Vector3(24.7, 0, -15), new THREE.Vector3(24.7, 0, 0), new THREE.Vector3(24.7, 0, 15)
-    ];
-    loadAndPlaceInstances('/Wall/longwall.glb', wallPositions, new THREE.Vector3(2, 2, 2));
-
-    const floorGeometry = new THREE.PlaneGeometry(50, 50);
-    const floorTexture = new THREE.TextureLoader().load('/Floor/grass.jpg', (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(5, 5); });
-    const floorMaterial = new THREE.MeshPhongMaterial({ map: floorTexture });
-    const floorMesh = new THREE.Mesh(floorGeometry, floorMaterial);
-    floorMesh.rotation.x = -Math.PI / 2;
-    floorMesh.receiveShadow = true;
-    floorMesh.castShadow = false;
-    scene.add(floorMesh);
-    worldOctree.fromGraphNode(floorMesh);
-
-    scene.background = new THREE.TextureLoader().load('/Background/langit.jpg', (t) => { t.encoding = THREE.sRGBEncoding; });
-    scene.add(new THREE.AmbientLight(0x404040, 1.5));
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-    directionalLight.position.set(5, 10, 7.5);
-    directionalLight.castShadow = true;
-    scene.add(directionalLight);
-})();
 
 // =================================================================
 // BAGIAN 5: EVENT LISTENERS
@@ -446,6 +388,12 @@ container.addEventListener('click', () => {
     document.body.requestPointerLock();
 });
 
+document.addEventListener('pointerlockchange', () => {
+    if (document.pointerLockElement === document.body) {
+        document.addEventListener('mousedown', (e) => { if (e.button === 0) startSpin(); });
+    }
+});
+
 document.body.addEventListener('mousemove', (event) => {
     if (document.pointerLockElement === document.body) {
         camera.rotation.y -= event.movementX / 1000;
@@ -459,23 +407,15 @@ document.body.addEventListener('mousemove', (event) => {
 
 function animate() {
     requestAnimationFrame(animate);
-    const deltaTime = clock.getDelta(); // Ambil deltaTime asli sekali
-    const simulationDelta = Math.min(0.05, deltaTime) / STEPS_PER_FRAME;
-
+    const deltaTime = Math.min(0.05, clock.getDelta()) / STEPS_PER_FRAME;
     for (let i = 0; i < STEPS_PER_FRAME; i++) {
-        controls(simulationDelta);
-        updatePlayer(simulationDelta);
+        controls(deltaTime);
+        updatePlayer(deltaTime);
         teleportPlayerIfOob();
     }
-
     handleSpin();
-    updateInteractions(); 
-    
-    for (const mixer of animalMixers) {
-        mixer.update(deltaTime); // Gunakan deltaTime asli untuk animasi
-    }
-    
-    TWEEN.update(performance.now()); // TWEEN.js lebih baik menggunakan timestamp global
+    updateInteractions(); // Satu fungsi untuk semua interaksi
+    TWEEN.update();
     renderer.render(scene, camera);
 }
 
