@@ -159,11 +159,11 @@ loader.load('/Lever/lever.glb', function (gltf) {
             worldOctree.fromGraphNode(wall);
         });
     }
-    const wallPositions = [ { pos: new THREE.Vector3(-10, 0, -24.7) }, { pos: new THREE.Vector3(-10, 3.5, -24.7) }, { pos: new THREE.Vector3(-24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-24.5, 3.5, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-24.3, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-24.3, 3.5, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-10, 0, 25) }, { pos: new THREE.Vector3(-10, 3.5, 25) }, { pos: new THREE.Vector3(24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(24.5, 3.5, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(24.7, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(24.7, 3.5, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(8, 0, -24.7) }, { pos: new THREE.Vector3(8, 3.5, -24.7) }, { pos: new THREE.Vector3(8, 0, 25) }, { pos: new THREE.Vector3(8, 3.5, 25) }];
+    const wallPositions = [ { pos: new THREE.Vector3(-10, 0, -24.7) }, { pos: new THREE.Vector3(-24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-24.3, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-10, 0, 25) }, { pos: new THREE.Vector3(24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(24.7, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(8, 0, -24.7) }, { pos: new THREE.Vector3(8, 0, 25) }];
     wallPositions.forEach(w => loadWall(w.pos, w.rot));
 
     const floorGeometry = new THREE.PlaneGeometry(50, 50);
-    const floorTexture = new THREE.TextureLoader().load('/Floor/tile.jpg', (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(5, 5); });
+    const floorTexture = new THREE.TextureLoader().load('/Floor/grass.jpg', (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(5, 5); });
     const floorMaterial = new THREE.MeshPhongMaterial({ map: floorTexture });
     const floorMesh = new THREE.Mesh(floorGeometry, floorMaterial);
     floorMesh.rotation.x = -Math.PI / 2;
@@ -171,7 +171,7 @@ loader.load('/Lever/lever.glb', function (gltf) {
     scene.add(floorMesh);
     worldOctree.fromGraphNode(floorMesh);
 
-    scene.background = new THREE.TextureLoader().load('/Background/ascentmap.jpg', (t) => { t.encoding = THREE.sRGBEncoding; });
+    scene.background = new THREE.TextureLoader().load('/Background/langit.jpg', (t) => { t.encoding = THREE.sRGBEncoding; });
     scene.add(new THREE.AmbientLight(0x404040, 1.5));
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
     directionalLight.position.set(5, 10, 7.5);
