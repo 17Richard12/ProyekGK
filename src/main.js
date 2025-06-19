@@ -45,9 +45,13 @@ let playerMoney = 0;
 let uncollectedMoney = 0;
 let currentIncomeRate = 10;
 // PERUBAHAN: Rate dasar + rate per bangunan + rate per kandang akan kita kelola
-const incomeRatePerBuilding = [10, 25, 75, 200]; 
+const incomeRatePerBuilding = [10, 25, 75, 200];
 const incomePerPen = 5; // Setiap kandang yang dibeli menambah +5 income
-const PEN_COST = 250; // Menetapkan harga per kandang
+const PEN_COST = 50; // Menetapkan harga per kandang
+const TREES_COST = 1000; // BARU: Harga untuk membeli semua pohon sekaligus
+let areTreesPurchased = false;
+// BARU: Income per animal
+const INCOME_PER_ANIMAL = 50;
 
 const uncollectedMoneyDisplay = document.getElementById('uncollectedMoneyDisplay');
 const collectedMoneyDisplay = document.getElementById('collectedMoneyDisplay');
@@ -76,6 +80,24 @@ let buildLeverModel = null;
 let pensPurchasedCount = 0; // Menghitung jumlah kandang yang sudah dibeli
 const TOTAL_PENS = 9;
 let penObjects = []; // Hanya untuk menyimpan model kandang
+
+// BARU: Logika untuk manajemen hewan
+let animalsPurchasedCount = 0; // Menghitung jumlah hewan yang sudah dibeli
+const ANIMAL_COST = 200; // Biaya per hewan
+
+// Data hewan yang tersedia (sesuai dengan file Anda)
+const animalData = [
+    { name: 'African Buffalo', model: '/Animal/african_buffalo.glb', scale: 0.005 },
+    { name: 'Elephant', model: '/Animal/elephantff.glb', scale: 0.005 },
+    { name: 'Giraffe', model: '/Animal/giraffe.glb', scale: 0.005 },
+    { name: 'Gorilla', model: '/Animal/gorilla.glb', scale: 0.005 },
+    { name: 'Hippopotamus', model: '/Animal/hippopotamus.glb', scale: 0.005 },
+    { name: 'Lion', model: '/Animal/lion_lowpoly1.glb', scale: 0.005 },
+    { name: 'Polar Bear', model: '/Animal/polar_bear.glb', scale: 0.005 },
+    { name: 'Rhinoceros', model: '/Animal/rhinoceros.glb', scale: 0.005 },
+    { name: 'Zebra', model: '/Animal/zebra.glb', scale: 0.005 },
+];
+let currentAnimalIndexToBuy = 0; // Untuk membeli hewan secara berurutan
 
 // Objek interaktif akan dikelola di sini
 let interactiveObjects = [];
@@ -135,7 +157,7 @@ loader.load('/Lever/lever.glb', function (gltf) {
 // Tuas Pembangunan (Disederhanakan)
 loader.load('/Lever/lever.glb', function (gltf) {
     const buildLever = gltf.scene;
-    
+
     // =======================================================
     // PERUBAHAN: Simpan model tuas ke variabel global
     // =======================================================
@@ -166,27 +188,53 @@ loader.load('/Lever/lever.glb', function (gltf) {
     });
 });
 
+// Ganti blok loader.load untuk tuas tengah Anda dengan yang ini
 // =======================================================
-// BARU: TUAS KHUSUS UNTUK MEMBELI KANDANG
+// BARU: TUAS PINTAR UNTUK KANDANG & POHON & HEWAN
 // =======================================================
 loader.load('/Lever/lever.glb', function (gltf) {
-    const penLever = gltf.scene;
-    penLever.scale.set(1, 1, 1);
-    penLever.rotation.set(0, Math.PI / 2, 0);
-    penLever.position.set(15, 0.7, -5); // Posisi di tengah
-    scene.add(penLever);
+    const penAnimalLever = gltf.scene;
+    penAnimalLever.scale.set(1, 1, 1);
+    penAnimalLever.rotation.set(0, Math.PI / 2, 0);
+    penAnimalLever.position.set(15, 0.7, -5); // Posisi di tengah
+    scene.add(penAnimalLever);
 
     interactiveObjects.push({
-        model: penLever,
-        action: buyNextPen, // Fungsi baru yang akan kita buat
+        model: penAnimalLever,
+        action: handlePenAnimalLeverAction, // Fungsi baru yang akan menentukan aksi
         getDetails: () => {
-            if (pensPurchasedCount >= TOTAL_PENS) {
-                return { canInteract: false, message: 'Semua Kandang Telah Dibeli', highlightColor: '#ffff00' };
+            // Prioritas 1: Jika semua pohon sudah dibeli, tuas tidak bisa diinteraksikan lagi untuk membeli
+            if (areTreesPurchased && animalsPurchasedCount >= TOTAL_PENS) {
+                return { canInteract: false, message: 'Semua Pengembangan Selesai', highlightColor: '#00ffaa' };
             }
+
+            // Prioritas 2: Jika semua kandang sudah dibeli TAPI belum semua hewan, tawarkan pembelian hewan
+            if (pensPurchasedCount === TOTAL_PENS && animalsPurchasedCount < TOTAL_PENS) {
+                const currentAnimalName = animalData[currentAnimalIndexToBuy]?.name || "Hewan";
+                const hasEnoughMoney = playerMoney >= ANIMAL_COST;
+                return {
+                    canInteract: hasEnoughMoney,
+                    message: hasEnoughMoney ? `Beli ${currentAnimalName} (${animalsPurchasedCount + 1}/${TOTAL_PENS}) (Biaya: ${ANIMAL_COST})` : `Uang tidak cukup (Butuh: ${ANIMAL_COST})`,
+                    highlightColor: hasEnoughMoney ? '#00ff00' : '#ff0000'
+                };
+            }
+
+            // Prioritas 3: Jika semua kandang sudah dibeli, tawarkan pembelian pohon
+            if (pensPurchasedCount >= TOTAL_PENS) {
+                const hasEnoughMoney = playerMoney >= TREES_COST;
+                return {
+                    canInteract: hasEnoughMoney,
+                    message: hasEnoughMoney ? `Beli Semua Pohon (Biaya: ${TREES_COST})` : `Uang tidak cukup (Butuh: ${TREES_COST})`,
+                    highlightColor: hasEnoughMoney ? '#00ff00' : '#ff0000'
+                };
+            }
+
+
+            // Prioritas 4 (Default): Tawarkan pembelian kandang
             const hasEnoughMoney = playerMoney >= PEN_COST;
             return {
                 canInteract: hasEnoughMoney,
-                message: hasEnoughMoney ? `Beli Kandang (<span class="math-inline">\{pensPurchasedCount \+ 1\}/</span>{TOTAL_PENS}) (Biaya: ${PEN_COST})` : `Uang tidak cukup (Butuh: ${PEN_COST})`,
+                message: hasEnoughMoney ? `Beli Kandang (${pensPurchasedCount + 1}/${TOTAL_PENS}) (Biaya: ${PEN_COST})` : `Uang tidak cukup (Butuh: ${PEN_COST})`,
                 highlightColor: hasEnoughMoney ? '#00ff00' : '#ff0000'
             };
         }
@@ -216,30 +264,15 @@ loader.load('/Lever/lever.glb', function (gltf) {
             fence.scale.set(1.5, 1.5, 1.5);
             fence.rotation.y = rotationY;
             fence.position.copy(position);
-            
+
             // Tambahkan ke grup, bukan langsung ke scene
             parentGroup.add(fence);
-            
+
             // Tambahkan collision untuk setiap bagian pagar
             worldOctree.fromGraphNode(fence);
         });
     }
 
-    function loadPineTree(position) {
-    loader.load('/Building/pine_tree.glb', function (gltf) {
-        const tree = gltf.scene;
-        tree.scale.set(1.5, 1.5, 1.5); // Sesuaikan ukurannya jika perlu
-        tree.position.copy(position);
-
-        // Beri sedikit variasi rotasi agar tidak terlihat seragam
-        tree.rotation.y = Math.random() * Math.PI * 2;
-        
-        scene.add(tree);
-        
-        // Tambahkan pohon ke octree agar pemain tidak bisa menembusnya
-        worldOctree.fromGraphNode(tree);
-    });
-}
 
     // ===================================================================
     // FUNGSI BARU UNTUK MEMBUAT SATU KANDANG YANG DAPAT DIBELI
@@ -248,16 +281,13 @@ loader.load('/Lever/lever.glb', function (gltf) {
         const penGroup = new THREE.Group();
         penGroup.userData.isPen = true;
         penGroup.userData.penIndex = penIndex;
+        penGroup.userData.hasAnimal = false; // BARU: menandakan apakah kandang ini sudah ada hewan
+        penGroup.userData.animalModel = null; // BARU: menyimpan referensi model hewan
 
-        penGroup.visible = false; 
-        
+        penGroup.visible = false;
+
         scene.add(penGroup);
-        
-        // =======================================================
-        // PERBAIKAN: Hapus baris di bawah ini. Variabel 'penStates' sudah tidak ada.
-        // penStates[penIndex] = { isBought: false }; <-- HAPUS BARIS INI
-        // =======================================================
-        
+
         // Simpan model kandang ke dalam array penObjects
         penObjects[penIndex] = penGroup;
 
@@ -277,12 +307,12 @@ loader.load('/Lever/lever.glb', function (gltf) {
         loadFence(new THREE.Vector3(relativeCenter.x - halfSideLength, cY, relativeCenter.z - halfSideLength + (fenceLength * 1.5)), Math.PI, penGroup);
         loadFence(new THREE.Vector3(relativeCenter.x + halfSideLength, cY, relativeCenter.z - halfSideLength + (fenceLength / 2)), 2 * Math.PI, penGroup);
         loadFence(new THREE.Vector3(relativeCenter.x + halfSideLength, cY, relativeCenter.z - halfSideLength + (fenceLength * 1.5)), Math.PI, penGroup);
-        
+
         penGroup.position.copy(centerPosition);
     }
-    
+
     // --- MEMUAT DINDING (tidak berubah) ---
-    const wallPositions = [ { pos: new THREE.Vector3(-10, 0, -24.7) }, { pos: new THREE.Vector3(-24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-24.3, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-10, 0, 25) }, { pos: new THREE.Vector3(24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(24.7, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(8, 0, -24.7) }, { pos: new THREE.Vector3(8, 0, 25) }];
+    const wallPositions = [{ pos: new THREE.Vector3(-10, 0, -24.7) }, { pos: new THREE.Vector3(-24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-24.3, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(-10, 0, 25) }, { pos: new THREE.Vector3(24.5, 0, -6), rot: Math.PI / 2 }, { pos: new THREE.Vector3(24.7, 0, 6.3), rot: Math.PI / 2 }, { pos: new THREE.Vector3(8, 0, -24.7) }, { pos: new THREE.Vector3(8, 0, 25) }];
     wallPositions.forEach(w => loadWall(w.pos, w.rot));
 
     // ===================================================================
@@ -380,9 +410,20 @@ function updateCollectedMoneyDisplay() {
 function updateUncollectedMoneyDisplay() {
     if (uncollectedMoneyDisplay) uncollectedMoneyDisplay.innerText = `💰 ${uncollectedMoney}`;
 }
+
 function updateIncomeRateDisplay() {
+    let baseIncome = 0;
+    if (buildingLevel === 0) {
+        baseIncome = incomeRatePerBuilding[0];
+    } else {
+        baseIncome = incomeRatePerBuilding[buildingLevel];
+    }
+    const penIncome = pensPurchasedCount * incomePerPen;
+    const animalIncome = animalsPurchasedCount * INCOME_PER_ANIMAL; // BARU: Tambah pendapatan dari hewan
+    currentIncomeRate = baseIncome + penIncome + animalIncome;
     if (incomeRateDisplay) incomeRateDisplay.innerText = `+${currentIncomeRate} / detik`;
 }
+
 function generateMoney() {
     uncollectedMoney += currentIncomeRate;
     updateUncollectedMoneyDisplay();
@@ -423,9 +464,9 @@ function updateInteractions() {
         const objPosition = new THREE.Vector3();
         obj.model.getWorldPosition(objPosition);
         const distance = playerPosition.distanceTo(objPosition);
-        
+
         // Gunakan radius interaksi khusus per objek, atau default 3
-        const interactionRadius = obj.interactionRadius || 3; 
+        const interactionRadius = obj.interactionRadius || 3;
 
         if (distance < interactionRadius) {
             nearbyObjects.push({ object: obj, distance: distance });
@@ -445,7 +486,7 @@ function updateInteractions() {
         if (obj === closestInteractiveObject) {
             const details = obj.getDetails();
             highlightObject(obj.model, true, details.highlightColor);
-            
+
             // Hanya set activeInteraction jika bisa di-klik
             if (details.canInteract) {
                 activeInteraction = obj;
@@ -458,7 +499,7 @@ function updateInteractions() {
             highlightObject(obj.model, false);
         }
     }
-    
+
     if (!somethingIsHighlighted) {
         leverMessage.style.display = 'none';
     }
@@ -478,6 +519,147 @@ function animateLeverPull(leverToAnimate) {
         .start();
 }
 
+function loadPineTree(position) {
+    loader.load('/Building/pine_tree.glb', function (gltf) {
+        const tree = gltf.scene;
+        tree.scale.set(0.02, 0.02, 0.02); // Sesuaikan ukurannya jika perlu
+        tree.position.copy(position);
+
+        // Beri sedikit variasi rotasi agar tidak terlihat seragam
+        tree.rotation.y = Math.random() * Math.PI * 2;
+
+        scene.add(tree);
+
+        // Tambahkan pohon ke octree agar pemain tidak bisa menembusnya
+        worldOctree.fromGraphNode(tree);
+    });
+}
+
+function placeTreesProcedurally(count) {
+    // 1. Definisikan area-area yang tidak boleh ditanami pohon
+    // Format: { x, z, width, depth } -> pusat dan ukuran area
+    const noGoZones = [
+        // Area seluruh kandang (grid 3x3 dengan jarak 8, total sekitar 24x24)
+        { x: 0, z: 0, width: 26, depth: 26 },
+
+        // Area bangunan utama (diberi buffer ekstra)
+        { x: -10, z: 10, width: 12, depth: 12 },
+
+        // Area meja dan tuas-tuas (diberi buffer ekstra)
+        { x: 15, z: -5, width: 8, depth: 10 },
+    ];
+
+    const worldBounds = 24; // Batas area tanam, agar tidak terlalu mepet tembok
+    let placedCount = 0;
+    let maxAttempts = count * 20; // Untuk mencegah loop tak terbatas
+
+    for (let i = 0; i < maxAttempts && placedCount < count; i++) {
+        // 2. Hasilkan posisi acak di dalam dunia
+        const randomX = Math.random() * (worldBounds * 2) - worldBounds; // antara -24 dan 24
+        const randomZ = Math.random() * (worldBounds * 2) - worldBounds; // antara -24 dan 24
+
+        let isSafe = true;
+        // 3. Cek apakah posisi acak ini berada di dalam salah satu zona terlarang
+        for (const zone of noGoZones) {
+            const halfW = zone.width / 2;
+            const halfD = zone.depth / 2;
+            if (randomX > zone.x - halfW && randomX < zone.x + halfW &&
+                randomZ > zone.z - halfD && randomZ < zone.z + halfD) {
+                isSafe = false;
+                break; // Jika sudah di dalam satu zona, tak perlu cek zona lain
+            }
+        }
+
+        // 4. Jika posisi aman, tanam pohon di sana
+        if (isSafe) {
+            loadPineTree(new THREE.Vector3(randomX, 0, randomZ));
+            placedCount++;
+        }
+    }
+
+    if (placedCount < count) {
+        console.warn(`Hanya berhasil menanam ${placedCount} dari ${count} pohon.`);
+    }
+}
+
+function buyAllTrees() {
+    // Cek kondisi pembelian
+    if (areTreesPurchased || playerMoney < TREES_COST) {
+        return;
+    }
+
+    // Proses transaksi
+    playerMoney -= TREES_COST;
+    updateCollectedMoneyDisplay();
+    areTreesPurchased = true;
+
+    // Animasikan tuas
+    animateLeverPull(interactiveObjects.find(o => o.action === handlePenAnimalLeverAction)?.model);
+
+    // Panggil fungsi yang menanam pohon di dunia game
+    placeTreesProcedurally(50); // Angka bisa diubah
+
+    // Beri bonus income karena area sudah bagus
+    // currentIncomeRate += 100; // Ini akan dihitung ulang di updateIncomeRateDisplay
+    updateIncomeRateDisplay();
+}
+
+// BARU: Fungsi untuk membeli hewan
+function buyAnimal() {
+    // Cek apakah ada kandang kosong dan uang cukup
+    if (animalsPurchasedCount >= pensPurchasedCount || animalsPurchasedCount >= TOTAL_PENS || playerMoney < ANIMAL_COST) {
+        return;
+    }
+
+    const animalToBuy = animalData[currentAnimalIndexToBuy];
+    if (!animalToBuy) {
+        console.warn("No more animals to buy!");
+        return;
+    }
+
+    // Temukan kandang yang belum ada hewannya
+    const targetPen = penObjects.find(pen => pen && pen.visible && !pen.userData.hasAnimal);
+
+    if (targetPen) {
+        playerMoney -= ANIMAL_COST;
+        updateCollectedMoneyDisplay();
+        animateLeverPull(interactiveObjects.find(o => o.action === handlePenAnimalLeverAction)?.model);
+
+        loader.load(animalToBuy.model, (gltf) => {
+            const animal = gltf.scene;
+            // Posisi hewan relatif terhadap kandang
+            animal.position.set(0, 0, 0); // Di tengah kandang
+            animal.scale.set(animalToBuy.scale, animalToBuy.scale, animalToBuy.scale);
+            animal.rotation.y = Math.random() * Math.PI * 2; // Variasi rotasi
+            targetPen.add(animal); // Tambahkan hewan ke grup kandang
+
+            // Tandai kandang sudah ada hewan
+            targetPen.userData.hasAnimal = true;
+            targetPen.userData.animalModel = animal;
+
+            animalsPurchasedCount++; // Tambah jumlah hewan yang dibeli
+            currentAnimalIndexToBuy = (currentAnimalIndexToBuy + 1) % animalData.length; // Lanjut ke hewan berikutnya
+            updateIncomeRateDisplay(); // Perbarui pendapatan
+        }, undefined, (error) => console.error(`Error loading animal ${animalToBuy.name}:`, error));
+    }
+}
+
+// BARU: Fungsi untuk menangani aksi tuas kandang/hewan/pohon
+function handlePenAnimalLeverAction() {
+    // Jika semua kandang sudah dibeli TAPI belum semua hewan, tawarkan pembelian hewan
+    if (pensPurchasedCount === TOTAL_PENS && animalsPurchasedCount < TOTAL_PENS) {
+        buyAnimal();
+    }
+    // Jika semua kandang sudah dibeli, tawarkan pembelian pohon
+    else if (pensPurchasedCount >= TOTAL_PENS) {
+        buyAllTrees();
+    } else {
+        // Jika belum, aksinya adalah membeli kandang
+        buyNextPen();
+    }
+}
+
+
 function buyNextPen() {
     // Cek apakah semua kandang sudah dibeli atau uang tidak cukup
     if (pensPurchasedCount >= TOTAL_PENS || playerMoney < PEN_COST) {
@@ -489,7 +671,7 @@ function buyNextPen() {
     updateCollectedMoneyDisplay();
 
     // Animasikan tuas
-    animateLeverPull(interactiveObjects.find(o => o.action === buyNextPen)?.model);
+    animateLeverPull(interactiveObjects.find(o => o.action === handlePenAnimalLeverAction)?.model);
 
     // Dapatkan kandang berikutnya dari array dan buat terlihat
     const nextPen = penObjects[pensPurchasedCount];
@@ -499,9 +681,9 @@ function buyNextPen() {
 
     // Tambah jumlah kandang yang dibeli
     pensPurchasedCount++;
-    
+
     // Tingkatkan pendapatan pemain dan perbarui tampilan
-    currentIncomeRate += incomePerPen;
+    // currentIncomeRate += incomePerPen; // Ini akan dihitung ulang di updateIncomeRateDisplay
     updateIncomeRateDisplay();
 }
 
@@ -527,18 +709,18 @@ function buildBuilding() {
         });
 
         // Update pendapatan
-        const baseIncome = incomeRatePerBuilding[buildingLevel + 1] || incomeRatePerBuilding[incomeRatePerBuilding.length - 1];
-        const penIncome = pensPurchasedCount * incomePerPen;
-        currentIncomeRate = baseIncome + penIncome;
-        updateIncomeRateDisplay();
-        
+        // const baseIncome = incomeRatePerBuilding[buildingLevel + 1] || incomeRatePerBuilding[incomeRatePerBuilding.length - 1];
+        // const penIncome = pensPurchasedCount * incomePerPen;
+        // currentIncomeRate = baseIncome + penIncome;
+        updateIncomeRateDisplay(); // Panggil fungsi ini agar update pendapatan terpusat
+
         // Naikkan level agar tidak bisa build lagi
         buildingLevel++;
 
         // =======================================================
         // LOGIKA BARU: HILANGKAN TUAS SETELAH PEMBELIAN
         // =======================================================
-        
+
         // 1. Sembunyikan model 3D tuas dari scene
         if (buildLeverModel) {
             buildLeverModel.visible = false;
