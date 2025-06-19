@@ -46,10 +46,8 @@ let uncollectedMoney = 0;
 let currentIncomeRate = 10;
 const incomeRatePerBuilding = [10, 25, 75, 200];
 const incomePerPen = 5; // Setiap kandang yang dibeli menambah +5 income
-const incomePerAnimal = 10; // Setiap hewan yang dibeli menambah +10 income
 const PEN_COST = 50; // Menetapkan harga per kandang
-const ANIMAL_COST = 75; // Menetapkan harga per hewan
-const TREES_COST = 1000;
+const TREES_COST = 1000; // Harga untuk membeli semua pohon sekaligus
 let areTreesPurchased = false;
 
 const uncollectedMoneyDisplay = document.getElementById('uncollectedMoneyDisplay');
@@ -57,6 +55,23 @@ const collectedMoneyDisplay = document.getElementById('collectedMoneyDisplay');
 const incomeRateDisplay = document.getElementById('incomeRateDisplay');
 const leverMessage = document.getElementById('leverMessage');
 
+// --- BARU: KONFIGURASI HEWAN ---
+const ANIMAL_COST = 75; // Biaya default per hewan
+const ANIMAL_TYPES = [
+    { name: "Jerapah", modelPath: '/Animal/giraffe.glb', scale: 0.5, income: 10, positionOffset: new THREE.Vector3(0, 0.5, 0) },
+    { name: "Gorila", modelPath: '/Animal/gorilla.glb', scale: 200, income: 15, positionOffset: new THREE.Vector3(0, 0, 0) }, // Offset 0,0,0 karena skala besar
+    { name: "Gajah", modelPath: '/Animal/elephant.glb', scale: 10, income: 20, positionOffset: new THREE.Vector3(0, 0, 0) },
+    { name: "Singa", modelPath: '/Animal/lion_lowpoly1.glb', scale: 0.5, income: 12, positionOffset: new THREE.Vector3(0, 0, 0) },
+    { name: "Kuda Nil", modelPath: '/Animal/hippopotamus.glb', scale: 1, income: 13, positionOffset: new THREE.Vector3(0, 0, 0) },
+    { name: "Kerbau Afrika", modelPath: '/Animal/african_buffalo.glb', scale: 1, income: 14, positionOffset: new THREE.Vector3(0, 0, 0) },
+    { name: "Beruang Kutub", modelPath: '/Animal/polar_bear.glb', scale: 0.5, income: 16, positionOffset: new THREE.Vector3(0, 0, 0) },
+    { name: "Badak", modelPath: '/Animal/rhinoceros.glb', scale: 1, income: 18, positionOffset: new THREE.Vector3(0, 0, 0) },
+    { name: "Zebra", modelPath: '/Animal/zebra.glb', scale: 0.5, income: 11, positionOffset: new THREE.Vector3(0, 0, 0) },
+];
+let animalsPurchasedCount = 0;
+const TOTAL_ANIMALS = ANIMAL_TYPES.length; // Total hewan yang bisa dibeli sesuai dengan jumlah tipe hewan
+let animalObjects = []; // Menyimpan model 3D untuk setiap hewan yang dimuat
+let animalMixers = []; // Untuk animasi hewan jika ada
 
 // Sistem Bangunan & Interaksi
 let buildingLevel = 0;
@@ -69,14 +84,10 @@ const buildingTierModels = [
 let buildings = [];
 let buildLeverModel = null;
 
-// Logika manajemen kandang & hewan
+// Logika manajemen kandang
 let pensPurchasedCount = 0;
-const TOTAL_PENS = 9;
+const TOTAL_PENS = ANIMAL_TYPES.length; // Jumlah kandang sama dengan jumlah tipe hewan
 let penObjects = []; // Menyimpan grup 3D untuk setiap kandang
-
-let animalsPurchasedCount = 0;
-const TOTAL_ANIMALS = 9; // Total hewan yang bisa dibeli (satu per kandang)
-let animalObjects = []; // Menyimpan model 3D untuk setiap hewan
 
 // Objek interaktif
 let interactiveObjects = [];
@@ -100,7 +111,7 @@ loader.load('/Lever/table.glb', function (gltf) {
 loader.load('/Lever/lever.glb', function (gltf) {
     const collectLever = gltf.scene;
     collectLever.scale.set(1, 1, 1);
-    collectLever.rotation.set(0, Math.PI / 2, 0); // Pastikan ini rotasi awal yang benar
+    collectLever.rotation.set(0, Math.PI / 2, 0);
     collectLever.position.set(15, 0.7, -3);
     scene.add(collectLever);
     interactiveObjects.push({
@@ -120,7 +131,7 @@ loader.load('/Lever/lever.glb', function (gltf) {
     buildLeverModel = buildLever;
 
     buildLever.scale.set(1, 1, 1);
-    buildLever.rotation.set(0, Math.PI / 2, 0); // Pastikan ini rotasi awal yang benar
+    buildLever.rotation.set(0, Math.PI / 2, 0);
     buildLever.position.set(15, 0.7, -7);
     scene.add(buildLever);
 
@@ -142,40 +153,45 @@ loader.load('/Lever/lever.glb', function (gltf) {
     });
 });
 
-// Tuas Pintar untuk Kandang, Pohon, & Hewan
+// Tuas Pintar untuk Kandang, Hewan, & Pohon
 loader.load('/Lever/lever.glb', function (gltf) {
-    const penAnimalLever = gltf.scene;
-    penAnimalLever.scale.set(1, 1, 1);
-    penAnimalLever.rotation.set(0, Math.PI / 2, 0); // Pastikan ini rotasi awal yang benar
-    penAnimalLever.position.set(15, 0.7, -5);
-    scene.add(penAnimalLever);
+    const penAnimalTreeLever = gltf.scene; // Nama lebih deskriptif
+    penAnimalTreeLever.scale.set(1, 1, 1);
+    penAnimalTreeLever.rotation.set(0, Math.PI / 2, 0);
+    penAnimalTreeLever.position.set(15, 0.7, -5);
+    scene.add(penAnimalTreeLever);
 
     interactiveObjects.push({
-        model: penAnimalLever,
-        action: handlePenAnimalLeverAction,
+        model: penAnimalTreeLever,
+        action: handlePenAnimalTreeLeverAction,
         getDetails: () => {
             if (areTreesPurchased) {
                 return { canInteract: false, message: 'Pengembangan Area Selesai', highlightColor: '#00ffaa' };
             }
 
-            if (pensPurchasedCount >= TOTAL_PENS && animalsPurchasedCount >= TOTAL_ANIMALS) {
-                const hasEnoughMoney = playerMoney >= TREES_COST;
-                return {
-                    canInteract: hasEnoughMoney,
-                    message: hasEnoughMoney ? `Beli Semua Pohon (Biaya: ${TREES_COST})` : `Uang tidak cukup (Butuh: ${TREES_COST})`,
-                    highlightColor: hasEnoughMoney ? '#00ff00' : '#ff0000'
-                };
+            // Jika semua kandang sudah ada
+            if (pensPurchasedCount >= TOTAL_PENS) {
+                // Dan belum semua hewan dibeli
+                if (animalsPurchasedCount < TOTAL_ANIMALS) {
+                    const nextAnimal = ANIMAL_TYPES[animalsPurchasedCount];
+                    const hasEnoughMoney = playerMoney >= ANIMAL_COST;
+                    return {
+                        canInteract: hasEnoughMoney,
+                        message: hasEnoughMoney ? `Beli ${nextAnimal.name} (${animalsPurchasedCount + 1}/${TOTAL_ANIMALS}) (Biaya: ${ANIMAL_COST})` : `Uang tidak cukup (Butuh: ${ANIMAL_COST})`,
+                        highlightColor: hasEnoughMoney ? '#00ff00' : '#ff0000'
+                    };
+                } else {
+                    // Semua kandang dan hewan sudah dibeli, tawarkan pohon
+                    const hasEnoughMoney = playerMoney >= TREES_COST;
+                    return {
+                        canInteract: hasEnoughMoney,
+                        message: hasEnoughMoney ? `Beli Semua Pohon (Biaya: ${TREES_COST})` : `Uang tidak cukup (Butuh: ${TREES_COST})`,
+                        highlightColor: hasEnoughMoney ? '#00ff00' : '#ff0000'
+                    };
+                }
             }
 
-            if (pensPurchasedCount >= TOTAL_PENS && animalsPurchasedCount < TOTAL_ANIMALS) {
-                const hasEnoughMoney = playerMoney >= ANIMAL_COST;
-                return {
-                    canInteract: hasEnoughMoney,
-                    message: hasEnoughMoney ? `Beli Hewan (${animalsPurchasedCount + 1}/${TOTAL_ANIMALS}) (Biaya: ${ANIMAL_COST})` : `Uang tidak cukup (Butuh: ${ANIMAL_COST})`,
-                    highlightColor: hasEnoughMoney ? '#00ff00' : '#ff0000'
-                };
-            }
-
+            // Default: Tawarkan pembelian kandang
             const hasEnoughMoney = playerMoney >= PEN_COST;
             return {
                 canInteract: hasEnoughMoney,
@@ -210,19 +226,46 @@ loader.load('/Lever/lever.glb', function (gltf) {
         });
     }
 
-    // Fungsi untuk memuat model hewan (jerapah)
-    function loadAnimalModel(position, rotationY = 0, parentGroup, animalIndex) {
-        loader.load('/Animal/giraffe.glb', function (gltf) {
+    // Fungsi untuk memuat model hewan generik
+    function loadAnimalModel(animalType, penGroup, animalIndex) {
+        // Logika untuk debugging
+        console.log(`loadAnimalModel() dipanggil untuk ${animalType.name} (indeks: ${animalIndex})`);
+        console.log(`Model Path: ${animalType.modelPath}, Scale: ${animalType.scale}`);
+        
+        loader.load(animalType.modelPath, function (gltf) {
+            console.log(`Model ${animalType.name} berhasil dimuat!`);
             const animal = gltf.scene;
-            animal.scale.set(200, 200, 200); // Skala jerapah
-            animal.rotation.y = rotationY;
-            animal.position.copy(position);
-            parentGroup.add(animal);
-            worldOctree.fromGraphNode(animal);
+            
+            // Set skala berdasarkan konfigurasi ANIMAL_TYPES
+            animal.scale.set(animalType.scale, animalType.scale, animalType.scale);
+            
+            // Atur posisi relatif terhadap kandang
+            // animalType.positionOffset memungkinkan penyesuaian posisi spesifik per hewan
+            animal.position.copy(animalType.positionOffset); 
+            
+            // Rotasi acak agar tidak seragam
+            animal.rotation.y = Math.random() * Math.PI * 2; 
+
+            // Tambahkan jerapah ke dalam grup kandang
+            penGroup.add(animal); 
+            
+            // Tambahkan ke octree untuk collision
+            worldOctree.fromGraphNode(animal); 
+            
+            // Simpan referensi model hewan ke array global
             animalObjects[animalIndex] = animal;
+
+            // Inisialisasi AnimationMixer jika model memiliki animasi
+            if (gltf.animations && gltf.animations.length > 0) {
+                const mixer = new THREE.AnimationMixer(animal);
+                const action = mixer.clipAction(gltf.animations[0]);
+                action.play();
+                animalMixers.push(mixer); // Simpan mixer agar bisa diupdate di loop animate
+            }
+
         }, undefined, function (error) {
-            console.error('An error occurred while loading the giraffe model:', error);
-            leverMessage.innerText = 'Gagal memuat model jerapah. Cek konsol.';
+            console.error(`Gagal memuat model ${animalType.name} dari ${animalType.modelPath}:`, error);
+            leverMessage.innerText = `Gagal memuat model ${animalType.name}. Cek konsol.`;
             leverMessage.style.display = 'block';
         });
     }
@@ -427,30 +470,24 @@ function updateInteractions() {
     }
 }
 
-// --- FUNGSI UTAMA UNTUK ANIMASI TUAS ---
 function animateLeverPull(leverToAnimate) {
-    // Pastikan tidak ada animasi lain yang sedang berjalan pada tuas ini
     if (!leverToAnimate || TWEEN.getAll().some(tween => tween.isPlaying() && tween.object === leverToAnimate)) {
         return;
     }
 
-    const initialRotationX = leverToAnimate.rotation.x; // Simpan rotasi X awal
-    const rotateAngle = Math.PI / 4; // Rotasi 45 derajat (sesuaikan jika perlu)
+    // Rotasi tuas pada sumbu X lokalnya. Sesuaikan jika model Anda berorientasi berbeda.
+    const initialRotationX = leverToAnimate.rotation.x;
+    const rotateAngle = Math.PI / 4; // Rotasi 45 derajat
 
-    // Animasi turun
     const tweenDown = new TWEEN.Tween(leverToAnimate.rotation)
-        .to({ x: initialRotationX + rotateAngle }, 150) // Turun 45 derajat
+        .to({ x: initialRotationX + rotateAngle }, 150)
         .easing(TWEEN.Easing.Quadratic.Out);
 
-    // Animasi naik kembali
     const tweenUp = new TWEEN.Tween(leverToAnimate.rotation)
-        .to({ x: initialRotationX }, 150) // Kembali ke posisi awal
+        .to({ x: initialRotationX }, 150)
         .easing(TWEEN.Easing.Quadratic.Out);
 
-    // Rantai animasi: turun lalu naik
     tweenDown.chain(tweenUp);
-
-    // Mulai animasi
     tweenDown.start();
 }
 
@@ -469,7 +506,7 @@ function loadPineTree(position) {
 function placeTreesProcedurally(count) {
     const noGoZones = [
         { x: 0, z: 0, width: 26, depth: 26 },
-        { x: -10, z: 10, width: 12, depth: 12 },
+        { x: -10, z: 10, width: 18, depth: 18 },
         { x: 15, z: -5, width: 8, depth: 10 },
     ];
 
@@ -512,43 +549,61 @@ function buyAllTrees() {
     updateCollectedMoneyDisplay();
     areTreesPurchased = true;
 
-    animateLeverPull(interactiveObjects.find(o => o.action === handlePenAnimalLeverAction)?.model);
-
+    animateLeverPull(interactiveObjects.find(o => o.action === handlePenAnimalTreeLeverAction)?.model);
+    
     placeTreesProcedurally(50);
     currentIncomeRate += 100;
     updateIncomeRateDisplay();
+    saveGame();
 }
 
+// Fungsi untuk membeli hewan
 function buyAnimal() {
+    // Memastikan semua kandang sudah dibeli dan belum semua hewan dibeli
     if (pensPurchasedCount < TOTAL_PENS || animalsPurchasedCount >= TOTAL_ANIMALS || playerMoney < ANIMAL_COST) {
         return;
     }
+    
+    const nextAnimalType = ANIMAL_TYPES[animalsPurchasedCount];
 
     playerMoney -= ANIMAL_COST;
     updateCollectedMoneyDisplay();
 
-    animateLeverPull(interactiveObjects.find(o => o.action === handlePenAnimalLeverAction)?.model);
+    animateLeverPull(interactiveObjects.find(o => o.action === handlePenAnimalTreeLeverAction)?.model);
 
-    const targetPenIndex = animalsPurchasedCount;
+    // Tentukan kandang mana yang akan ditempati hewan
+    const targetPenIndex = animalsPurchasedCount; // Hewan ke-0 akan masuk kandang ke-0, dst.
     const targetPenGroup = penObjects[targetPenIndex];
 
     if (targetPenGroup) {
-        loadAnimalModel(new THREE.Vector3(0, 0.5, 0), Math.random() * Math.PI * 2, targetPenGroup, animalsPurchasedCount);
+        // Panggil loadAnimalModel dengan objek animalType yang sesuai
+        loadAnimalModel(nextAnimalType, targetPenGroup, animalsPurchasedCount);
     } else {
         console.warn(`Kandang dengan indeks ${targetPenIndex} tidak ditemukan untuk menempatkan hewan.`);
+        // Opsional: kembalikan uang jika kandang tidak ada
+        // playerMoney += ANIMAL_COST;
+        // updateCollectedMoneyDisplay();
     }
 
     animalsPurchasedCount++;
-    currentIncomeRate += incomePerAnimal;
+    currentIncomeRate += nextAnimalType.income; // Tambah income berdasarkan hewan yang dibeli
     updateIncomeRateDisplay();
+    saveGame();
 }
 
-function handlePenAnimalLeverAction() {
+// Fungsi yang mengelola aksi tuas tengah (kandang, hewan, pohon)
+function handlePenAnimalTreeLeverAction() {
+    // Prioritas:
+    // 1. Beli Hewan: Jika semua kandang sudah dibeli TAPI belum semua hewan dibeli.
     if (pensPurchasedCount >= TOTAL_PENS && animalsPurchasedCount < TOTAL_ANIMALS) {
         buyAnimal();
-    } else if (pensPurchasedCount >= TOTAL_PENS && animalsPurchasedCount >= TOTAL_ANIMALS) {
+    }
+    // 2. Beli Pohon: Jika semua kandang DAN semua hewan sudah dibeli.
+    else if (pensPurchasedCount >= TOTAL_PENS && animalsPurchasedCount >= TOTAL_ANIMALS) {
         buyAllTrees();
-    } else {
+    }
+    // 3. Beli Kandang: Default, jika kondisi di atas tidak terpenuhi.
+    else {
         buyNextPen();
     }
 }
@@ -561,16 +616,18 @@ function buyNextPen() {
     playerMoney -= PEN_COST;
     updateCollectedMoneyDisplay();
 
-    animateLeverPull(interactiveObjects.find(o => o.action === handlePenAnimalLeverAction)?.model);
+    animateLeverPull(interactiveObjects.find(o => o.action === handlePenAnimalTreeLeverAction)?.model);
 
     const nextPen = penObjects[pensPurchasedCount];
     if (nextPen) {
         nextPen.visible = true;
+        // Tidak perlu memanggil loadGorilla di sini, karena hewan dimuat saat buyAnimal()
     }
 
     pensPurchasedCount++;
     currentIncomeRate += incomePerPen;
     updateIncomeRateDisplay();
+    saveGame();
 }
 
 function buildBuilding() {
@@ -593,8 +650,12 @@ function buildBuilding() {
 
         const baseIncome = incomeRatePerBuilding[buildingLevel + 1] || incomeRatePerBuilding[incomeRatePerBuilding.length - 1];
         const penIncome = pensPurchasedCount * incomePerPen;
-        const animalIncome = animalsPurchasedCount * incomePerAnimal;
-        currentIncomeRate = baseIncome + penIncome + animalIncome;
+        // Hitung income dari hewan
+        let animalIncomeTotal = 0;
+        for (let i = 0; i < animalsPurchasedCount; i++) {
+            animalIncomeTotal += ANIMAL_TYPES[i].income;
+        }
+        currentIncomeRate = baseIncome + penIncome + animalIncomeTotal;
         updateIncomeRateDisplay();
 
         buildingLevel++;
@@ -607,9 +668,101 @@ function buildBuilding() {
 
         activeInteraction = null;
         leverMessage.style.display = 'none';
+        saveGame();
     }
 }
 
+// --- FUNGSI SAVE/LOAD GAME ---
+function saveGame() {
+    const savedAnimals = [];
+    for(let i = 0; i < animalsPurchasedCount; i++) {
+        // Simpan indeks tipe hewan yang dibeli
+        savedAnimals.push(i); 
+    }
+
+    const saveData = {
+        money: playerMoney,
+        uncollected: uncollectedMoney,
+        income: currentIncomeRate,
+        buildingLvl: buildingLevel,
+        pensBought: pensPurchasedCount,
+        animalsBought: animalsPurchasedCount, // Simpan jumlah hewan yang dibeli
+        savedAnimalTypesIndices: savedAnimals, // Simpan urutan tipe hewan yang dimuat
+        treesBought: areTreesPurchased
+    };
+
+    localStorage.setItem('tycoonGameSave', JSON.stringify(saveData));
+    console.log('Game Saved!');
+}
+
+function loadGame() {
+    const savedDataString = localStorage.getItem('tycoonGameSave');
+    if (!savedDataString) {
+        console.log('No save data found. Starting a new game.');
+        return;
+    }
+
+    const savedData = JSON.parse(savedDataString);
+
+    // 1. Terapkan data yang disimpan
+    playerMoney = savedData.money;
+    uncollectedMoney = savedData.uncollected;
+    currentIncomeRate = savedData.income;
+    buildingLevel = savedData.buildingLvl;
+    pensPurchasedCount = savedData.pensBought;
+    animalsPurchasedCount = savedData.animalsBought || 0; // Pastikan ada nilai default
+    areTreesPurchased = savedData.treesBought;
+    const savedAnimalTypesIndices = savedData.savedAnimalTypesIndices || [];
+
+    console.log('Game Loaded!');
+
+    // 2. Perbarui tampilan visual berdasarkan data yang dimuat
+    updateCollectedMoneyDisplay();
+    updateUncollectedMoneyDisplay();
+    updateIncomeRateDisplay();
+
+    // Memunculkan kembali kandang yang sudah dibeli
+    for (let i = 0; i < pensPurchasedCount; i++) {
+        const penModel = penObjects[i];
+        if (penModel) {
+            penModel.visible = true;
+        }
+    }
+
+    // Memunculkan kembali hewan untuk setiap kandang yang sudah dibeli
+    // Ini mengasumsikan hewan dimuat secara berurutan sesuai pensPurchasedCount
+    // dan indeks di savedAnimalTypesIndices harus sesuai urutan pembelian
+    for (let i = 0; i < animalsPurchasedCount; i++) {
+        const penModel = penObjects[i];
+        const animalTypeIndex = savedAnimalTypesIndices[i];
+        if (penModel && ANIMAL_TYPES[animalTypeIndex]) {
+            loadAnimalModel(ANIMAL_TYPES[animalTypeIndex], penModel, i);
+        } else {
+             console.warn(`Gagal memuat kembali hewan untuk pen indeks ${i}. Tipe hewan indeks ${animalTypeIndex} tidak ditemukan atau penModel tidak ada.`);
+        }
+    }
+
+    // Memunculkan kembali bangunan
+    if (buildingLevel >= 1) {
+        if (buildLeverModel) {
+            buildLeverModel.visible = false;
+        }
+        interactiveObjects = interactiveObjects.filter(obj => obj.action !== buildBuilding);
+        loader.load(buildingTierModels[0], (gltf) => {
+            const newBuilding = gltf.scene;
+            newBuilding.position.set(-10, 0, 10);
+            newBuilding.scale.set(2, 2, 2);
+            scene.add(newBuilding);
+            worldOctree.fromGraphNode(newBuilding);
+            buildings[0] = newBuilding;
+        });
+    }
+
+    // Memunculkan kembali pohon
+    if (areTreesPurchased) {
+        placeTreesProcedurally(50);
+    }
+}
 // =================================================================
 // BAGIAN 5: EVENT LISTENERS
 // =================================================================
@@ -660,8 +813,10 @@ function animate() {
         updatePlayer(deltaTime);
         teleportPlayerIfOob();
     };
+    // Update semua animation mixer hewan
+    animalMixers.forEach(mixer => mixer.update(deltaTime)); 
     updateInteractions();
-    TWEEN.update(); // Pastikan TWEEN.update() dipanggil di setiap frame
+    TWEEN.update();
     renderer.render(scene, camera);
 }
 
@@ -670,6 +825,8 @@ updateCollectedMoneyDisplay();
 updateUncollectedMoneyDisplay();
 updateIncomeRateDisplay();
 setInterval(generateMoney, 1000);
+
+loadGame(); // Muat game saat startup
 
 // Mulai Loop Animasi
 animate();
